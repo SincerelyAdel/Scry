@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/chapter_alerts.dart';
 import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
+import '../../state/settings_provider.dart';
 import '../../theme.dart';
 import '../../widgets/ui.dart';
 import 'novel_cover.dart';
@@ -52,12 +54,15 @@ class _AddNovelScreenState extends State<AddNovelScreen> {
 
   Future<void> _add(NovelHit hit) async {
     final messenger = ScaffoldMessenger.of(context);
+    final alerts = context.read<SettingsProvider>().chapterAlerts;
     setState(() => _adding.add(hit.url));
     try {
       final novel = await context.read<NovelsProvider>().add(hit.url);
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text('Added ${novel.title}')));
+      // New chapter alerts need permission on Android 13 and later.
+      if (alerts) await ChapterAlerts.requestPermission();
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text("Couldn't add it: $e")));
     } finally {

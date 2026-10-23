@@ -70,16 +70,42 @@ class NovelRepository {
 
   /// Updates the novel's chapter count from the site. Returns the novel
   /// as stored afterwards.
-  Future<Novel> checkForChapters(Novel novel) async {
+  ///
+  /// Checks made in the app count as announcing the new chapters, since
+  /// the library shows them; background checks leave that to
+  /// [chaptersToAnnounce].
+  Future<Novel> checkForChapters(Novel novel, {bool inApp = true}) async {
     final page = await chapterPage(novel.bookId, 1);
-    final updated = novel.copyWith(
-      chapterCount: page.chapterCount > 0
-          ? page.chapterCount
-          : novel.chapterCount,
-      lastChecked: DateTime.now(),
-    );
-    await _db.updateNovel(updated);
-    return updated;
+    final count = page.chapterCount > 0
+        ? page.chapterCount
+        : novel.chapterCount;
+    final now = DateTime.now();
+    // Only these columns, so a check running while a chapter is read
+    // can't undo the reader's place.
+    await _db.setChapterCount(novel.id!, count, now);
+    if (inApp) await _db.setNotified(novel.id!, count);
+    return (await _db.getNovel(novel.id!)) ??
+        novel.copyWith(chapterCount: count, lastChecked: now);
+  }
+
+  /// Checks the novels being read for new chapters, for the background
+  /// check. Returns those with chapters not announced yet, and records
+  /// them as announced.
+  Future<List<Novel>> chaptersToAnnounce() async {
+    final fresh = <Novel>[];
+    for (final novel in await _db.listNovels()) {
+      if (!novel.started) continue;
+      try {
+        final updated = await checkForChapters(novel, inApp: false);
+        if (updated.unannounced > 0) {
+          await _db.setNotified(updated.id!, updated.chapterCount);
+          fresh.add(updated);
+        }
+      } on Exception {
+        // Offline or the site is down; the next check tries again.
+      }
+    }
+    return fresh;
   }
 
   /// One page of the novel's chapter list, newest first.
@@ -172,7 +198,12 @@ class NovelRepository {
     final doc = await _fetcher.fetchText(pageUrl);
     final info = Ranobes.parseNovel(doc.body, doc.url);
     if (info == null) throw FetchException("Couldn't read the novel's page");
-    if (count == null || info.chapterCount > 0) return info;
+    if (info.chapterCount > 0) return info;
+    // The page doesn't say how many chapters there are; the list does.
+    count ??= await chapterPage(
+      id,
+      1,
+    ).then((list) => list.chapterCount).catchError((Object _) => 0);
     return NovelInfo(
       url: info.url,
       bookId: info.bookId,

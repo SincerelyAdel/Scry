@@ -22,7 +22,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 7;
+  static const _version = 8;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -31,6 +31,7 @@ class AppDatabase {
   static Future<AppDatabase> open({
     DatabaseFactory? factory,
     String? path,
+    bool singleInstance = true,
   }) async {
     final dbFactory = factory ?? databaseFactory;
     final dbPath =
@@ -39,6 +40,9 @@ class AppDatabase {
       dbPath,
       options: OpenDatabaseOptions(
         version: _version,
+        // Background work opens its own connection: on Android a shared one
+        // would be closed for the app too when that work finishes.
+        singleInstance: singleInstance,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: _createSchema,
         onUpgrade: _upgrade,
@@ -95,6 +99,10 @@ class AppDatabase {
   /// so the library can say how many came out since.
   static const _seenColumn = 'seenCount INTEGER NOT NULL DEFAULT 0';
 
+  /// Added in version 8: the chapter count last announced in a
+  /// notification, so each new chapter is announced once.
+  static const _notifiedColumn = 'notifiedCount INTEGER NOT NULL DEFAULT 0';
+
   /// Added in version 6: novels from ranobes.net with the reader's place in
   /// each, and the chapters read or about to be read, kept for offline.
   static Future<void> _createNovelTables(DatabaseExecutor db) async {
@@ -116,7 +124,8 @@ class AppDatabase {
         chapterNumber INTEGER NOT NULL DEFAULT 0,
         chapterProgress REAL NOT NULL DEFAULT 0,
         readAt INTEGER,
-        $_seenColumn
+        $_seenColumn,
+        $_notifiedColumn
       )
     ''');
     // body is the chapter's paragraphs separated by blank lines.
@@ -177,8 +186,13 @@ class AppDatabase {
     }
     if (from < 6) {
       await _createNovelTables(db);
-    } else if (from < 7) {
-      await db.execute('ALTER TABLE novels ADD COLUMN $_seenColumn');
+    } else {
+      if (from < 7) {
+        await db.execute('ALTER TABLE novels ADD COLUMN $_seenColumn');
+      }
+      if (from < 8) {
+        await db.execute('ALTER TABLE novels ADD COLUMN $_notifiedColumn');
+      }
     }
   }
 
@@ -594,6 +608,25 @@ class AppDatabase {
   }
 
   Future<int> insertNovel(Novel novel) => _db.insert('novels', novel.toMap());
+
+  Future<void> setChapterCount(int novelId, int count, DateTime checked) async {
+    await _db.update(
+      'novels',
+      {'chapterCount': count, 'lastChecked': checked.millisecondsSinceEpoch},
+      where: 'id = ?',
+      whereArgs: [novelId],
+    );
+  }
+
+  /// Records that chapters up to [count] were announced.
+  Future<void> setNotified(int novelId, int count) async {
+    await _db.update(
+      'novels',
+      {'notifiedCount': count},
+      where: 'id = ?',
+      whereArgs: [novelId],
+    );
+  }
 
   Future<void> updateNovel(Novel novel) async {
     await _db.update(

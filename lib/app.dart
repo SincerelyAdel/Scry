@@ -4,7 +4,9 @@ import 'package:provider/provider.dart';
 import 'data/feed_repository.dart';
 import 'data/novel_repository.dart';
 import 'screens/home_shell.dart';
+import 'screens/novels/library_screen.dart';
 import 'services/background_sync.dart';
+import 'services/chapter_alerts.dart';
 import 'state/article_images.dart';
 import 'state/articles_provider.dart';
 import 'state/feeds_provider.dart';
@@ -21,6 +23,7 @@ class ScryApp extends StatefulWidget {
     required this.settings,
     required this.novels,
     this.refreshOnLaunch = true,
+    this.openNovelId,
   });
 
   final FeedRepository repository;
@@ -29,6 +32,10 @@ class ScryApp extends StatefulWidget {
 
   /// Fetch all feeds when the app starts. Off in widget tests.
   final bool refreshOnLaunch;
+
+  /// A novel to open on launch: the app was started from its new chapter
+  /// notification.
+  final int? openNovelId;
 
   @override
   State<ScryApp> createState() => _ScryAppState();
@@ -41,6 +48,7 @@ class _ScryAppState extends State<ScryApp> {
   late final NovelsProvider _novels;
   late var _sort = widget.settings.sort;
   late var _syncInterval = widget.settings.syncInterval;
+  late var _chapterAlerts = widget.settings.chapterAlerts;
 
   @override
   void initState() {
@@ -67,6 +75,25 @@ class _ScryAppState extends State<ScryApp> {
     _feeds.load();
     _articles.reload();
     if (widget.refreshOnLaunch) _feeds.refreshAll();
+
+    ChapterAlerts.onOpen = _openNovel;
+    final launchNovel = widget.openNovelId;
+    if (launchNovel != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _openNovel(launchNovel);
+      });
+    }
+  }
+
+  /// Opens a novel where it was left, from its notification.
+  Future<void> _openNovel(int id) async {
+    final novel = await widget.novels.getNovel(id);
+    if (novel == null) return;
+    await widget.settings.setMode(AppMode.novels);
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    final context = navigatorKey.currentContext;
+    if (context == null || !context.mounted) return;
+    await openReader(context, novel);
   }
 
   void _onSettingsChanged() {
@@ -79,11 +106,17 @@ class _ScryAppState extends State<ScryApp> {
       _syncInterval = settings.syncInterval;
       BackgroundSync.apply(_syncInterval);
     }
+    if (settings.chapterAlerts != _chapterAlerts) {
+      _chapterAlerts = settings.chapterAlerts;
+      BackgroundSync.applyChapterAlerts(_chapterAlerts);
+      if (_chapterAlerts) ChapterAlerts.requestPermission();
+    }
   }
 
   @override
   void dispose() {
     widget.settings.removeListener(_onSettingsChanged);
+    if (ChapterAlerts.onOpen == _openNovel) ChapterAlerts.onOpen = null;
     _feeds.dispose();
     _articles.dispose();
     _images.dispose();

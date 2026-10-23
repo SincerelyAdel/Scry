@@ -9,6 +9,7 @@ import 'data/app_database.dart';
 import 'data/feed_repository.dart';
 import 'data/novel_repository.dart';
 import 'services/background_sync.dart';
+import 'services/chapter_alerts.dart';
 import 'services/feed_fetcher.dart';
 import 'state/settings_provider.dart';
 
@@ -27,6 +28,15 @@ Future<void> main() async {
 
   await BackgroundSync.initialize();
   unawaited(BackgroundSync.apply(settings.syncInterval));
+  unawaited(BackgroundSync.applyChapterAlerts(settings.chapterAlerts));
+  final openNovelId = await ChapterAlerts.launchNovelId();
 
-  runApp(ScryApp(repository: repository, settings: settings, novels: novels));
+  runApp(
+    ScryApp(
+      repository: repository,
+      settings: settings,
+      novels: novels,
+      openNovelId: openNovelId,
+    ),
+  );
 }

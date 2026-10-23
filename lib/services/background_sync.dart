@@ -5,11 +5,15 @@ import 'package:workmanager/workmanager.dart';
 
 import '../data/app_database.dart';
 import '../data/feed_repository.dart';
+import '../data/novel_repository.dart';
 import '../state/settings_provider.dart';
+import 'chapter_alerts.dart';
 import 'feed_fetcher.dart';
 
 const _uniqueName = 'scry-periodic-refresh';
 const _taskName = 'refreshFeeds';
+const _chaptersUniqueName = 'scry-chapter-check';
+const _chaptersTaskName = 'checkChapters';
 
 /// Entry point for the background isolate Workmanager spins up. Must be a
 /// top-level function annotated so tree shaking keeps it.
@@ -18,11 +22,19 @@ void backgroundSyncDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     AppDatabase? db;
     try {
-      db = await AppDatabase.open();
-      await FeedRepository(db, DioFeedFetcher()).refreshAll();
+      // Its own connection: closing a shared one would close the app's.
+      db = await AppDatabase.open(singleInstance: false);
+      if (task == _chaptersTaskName) {
+        final novels = NovelRepository(db, DioFeedFetcher());
+        for (final novel in await novels.chaptersToAnnounce()) {
+          await ChapterAlerts.announce(novel);
+        }
+      } else {
+        await FeedRepository(db, DioFeedFetcher()).refreshAll();
+      }
       return true;
     } catch (e) {
-      debugPrint('Background refresh failed: $e');
+      debugPrint('Background task $task failed: $e');
       // false asks Android to retry with backoff.
       return false;
     } finally {
@@ -62,6 +74,23 @@ class BackgroundSync {
         networkType: NetworkType.connected,
         requiresBatteryNotLow: true,
       ),
+      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+    );
+  }
+
+  /// Schedules (or cancels) the hourly check for new chapters.
+  static Future<void> applyChapterAlerts(bool on) async {
+    if (!supported) return;
+    if (!on) {
+      await Workmanager().cancelByUniqueName(_chaptersUniqueName);
+      return;
+    }
+    await Workmanager().registerPeriodicTask(
+      _chaptersUniqueName,
+      _chaptersTaskName,
+      frequency: const Duration(hours: 1),
+      flexInterval: const Duration(minutes: 15),
+      constraints: Constraints(networkType: NetworkType.connected),
       existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
     );
   }

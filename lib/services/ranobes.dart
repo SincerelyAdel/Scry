@@ -92,7 +92,9 @@ abstract final class Ranobes {
     final description =
         doc.querySelector('.moreless .moreless__full') ??
         doc.querySelector('.moreless');
-    final chapters = RegExp(r'\d+').firstMatch(spec('Available') ?? '');
+    // Finished translations say "Translated" where others say "Available".
+    final chapters = RegExp(r'\d+')
+        .firstMatch(spec('Available') ?? spec('Translated') ?? '');
     return NovelInfo(
       url: meta('url') ?? url,
       bookId: id,

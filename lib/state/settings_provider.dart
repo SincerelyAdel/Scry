@@ -57,7 +57,8 @@ class SettingsProvider extends ChangeNotifier {
         NovelFont.values,
         _prefs.getString(_kNovelFont),
         NovelFont.serif,
-      );
+      ),
+      _chapterAlerts = _prefs.getBool(_kChapterAlerts) ?? true;
 
   final SharedPreferences _prefs;
 
@@ -69,6 +70,7 @@ class SettingsProvider extends ChangeNotifier {
   static const _kNovelFontSize = 'novelFontSize';
   static const _kNovelLineHeight = 'novelLineHeight';
   static const _kNovelFont = 'novelFont';
+  static const _kChapterAlerts = 'chapterAlerts';
 
   static const minNovelFontSize = 14.0;
   static const maxNovelFontSize = 32.0;
@@ -85,6 +87,17 @@ class SettingsProvider extends ChangeNotifier {
   double _novelFontSize;
   double _novelLineHeight;
   NovelFont _novelFont;
+  bool _chapterAlerts;
+
+  /// Notify about new chapters of novels being read.
+  bool get chapterAlerts => _chapterAlerts;
+
+  Future<void> setChapterAlerts(bool on) async {
+    if (on == _chapterAlerts) return;
+    _chapterAlerts = on;
+    notifyListeners();
+    await _prefs.setBool(_kChapterAlerts, on);
+  }
 
   /// Feeds or novels.
   AppMode get mode => _mode;

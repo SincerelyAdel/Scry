@@ -18,6 +18,7 @@ class Novel {
     this.chapterProgress = 0,
     this.readAt,
     this.seenCount = 0,
+    this.notifiedCount = 0,
   });
 
   final int? id;
@@ -57,6 +58,17 @@ class Novel {
 
   /// Chapters there were when it was last read.
   final int seenCount;
+
+  /// Chapters there were when new ones were last announced. Written only
+  /// by the database's setNotified, so saving a novel doesn't undo it.
+  final int notifiedCount;
+
+  /// Chapters out since it was last read that haven't been announced.
+  int get unannounced {
+    if (!started || seenCount <= 0) return 0;
+    final known = seenCount > notifiedCount ? seenCount : notifiedCount;
+    return chapterCount > known ? chapterCount - known : 0;
+  }
 
   bool get started => chapterUrl != null;
 
@@ -107,6 +119,7 @@ class Novel {
       chapterProgress: chapterProgress ?? this.chapterProgress,
       readAt: readAt ?? this.readAt,
       seenCount: seenCount ?? this.seenCount,
+      notifiedCount: notifiedCount,
     );
   }
 
@@ -131,6 +144,7 @@ class Novel {
       chapterProgress: ((map['chapterProgress'] as num?) ?? 0).toDouble(),
       readAt: date(map['readAt']),
       seenCount: (map['seenCount'] as int?) ?? 0,
+      notifiedCount: (map['notifiedCount'] as int?) ?? 0,
     );
   }
 

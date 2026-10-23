@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/novel.dart';
+import '../../services/chapter_alerts.dart';
 import '../../state/novels_provider.dart';
 import '../../theme.dart';
 import '../../widgets/swipe_back.dart';
@@ -234,6 +235,8 @@ Future<void> openReader(
   String? url,
   int? number,
 }) {
+  // Its new chapters are being read; the notification has done its job.
+  ChapterAlerts.dismiss(novel);
   return Navigator.of(context).push(
     SwipeBackRoute<void>(
       builder: (_) => ChapterReaderScreen(

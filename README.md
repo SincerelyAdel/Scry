@@ -89,6 +89,11 @@ the two sides; the choice is remembered.
   the chapter you're on, how many are left, and a **new** badge for
   chapters released since you last read. Opening the library (at most every
   half hour) or pulling down checks for new chapters.
+- **New chapter alerts** (Android): about once an hour, in the background,
+  the novels you've started are checked and a notification says how many
+  chapters came out since you last read. Each chapter is announced once;
+  tapping the notification opens the novel where you left it. Turn it off
+  in Settings → Novels.
 - **Adding**: search ranobes.net by name, or paste a link to a novel, one of
   its chapters or its chapter list.
 - **Novel page**: details and every chapter, oldest first, loaded from the
@@ -162,7 +167,9 @@ lib/
   services/
     feed_fetcher.dart       Dio HTTP (interface, so tests use a fake)
     feed_parser.dart        RSS/Atom/RDF → ParsedFeed, plus feed discovery in HTML
-    background_sync.dart    Workmanager dispatcher and scheduling
+    background_sync.dart    Workmanager dispatcher and scheduling (feeds,
+                            new chapter checks); opens its own DB connection
+    chapter_alerts.dart     new chapter notifications
     ranobes.dart            reading ranobes.net pages
   state/                    ChangeNotifiers: settings, feeds, articles (inbox),
                             article images (background picture lookups),
@@ -228,6 +235,7 @@ tool/
 | chapterNumber | int (from 1; 0 unknown) | | |
 | chapterProgress | real 0–1 (how far down) | | |
 | seenCount | int (chapters when last read) | | |
+| notifiedCount | int (chapters when last announced) | | |
 
 ### Package notes
 

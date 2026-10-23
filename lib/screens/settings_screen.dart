@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/article_sort.dart';
 import '../services/background_sync.dart';
+import '../services/chapter_alerts.dart';
 import '../state/settings_provider.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
@@ -159,6 +160,28 @@ class SettingsScreen extends StatelessWidget {
                   style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
                 ),
               ],
+            ),
+          ),
+          const SectionLabel('NOVELS'),
+          AppCard(
+            child: SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: settings.chapterAlerts && ChapterAlerts.supported,
+              onChanged: ChapterAlerts.supported
+                  ? settings.setChapterAlerts
+                  : null,
+              title: Text(
+                'New chapter alerts',
+                style: TextStyle(color: c.text, fontSize: 15),
+              ),
+              subtitle: Text(
+                ChapterAlerts.supported
+                    ? 'Checks the novels you are reading about once an hour '
+                          'and notifies you when new chapters come out.'
+                    : 'Not available on this platform. New chapters show '
+                          'in the library when it opens.',
+                style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
+              ),
             ),
           ),
         ],

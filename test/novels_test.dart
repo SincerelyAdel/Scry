@@ -62,6 +62,15 @@ void main() {
       expect(info.description, 'Growing up in poverty.\n\nTransported.');
     });
 
+    test('finished translations give their count as Translated', () {
+      final page = novelPage.replaceFirst(
+        '<li>Available: <span class="grey">3 chapters</li>',
+        '<li>In original: <span class="grey">1432 chapters</li>'
+            '<li>Translated: <span class="grey">1434 chapters</li>',
+      );
+      expect(Ranobes.parseNovel(page, novelUrl)!.chapterCount, 1434);
+    });
+
     test('chapter list numbers count back from the newest', () {
       final page = Ranobes.parseChapterList(chapterListPage(count: 3))!;
       expect(page.chapterCount, 3);
@@ -159,6 +168,77 @@ void main() {
       expect(await repo.listNovels(), hasLength(1));
     });
 
+    test('a page without a chapter count takes it from the list', () async {
+      fetcher.responses[novelUrl] = novelPage.replaceFirst(
+        '<li>Available: <span class="grey">3 chapters</li>',
+        '',
+      );
+      fetcher.responses[chapterListUrl] = chapterListPage(count: 3);
+      expect((await repo.addNovel(novelUrl)).chapterCount, 3);
+    });
+
+    test('a background connection closing leaves the app open', () async {
+      final dir = await Directory.systemTemp.createTemp('scry_bg');
+      addTearDown(() => dir.delete(recursive: true));
+      final path = '${dir.path}/scry.db';
+      final app = await AppDatabase.open(
+        factory: databaseFactoryFfiNoIsolate,
+        path: path,
+      );
+      final background = await AppDatabase.open(
+        factory: databaseFactoryFfiNoIsolate,
+        path: path,
+        singleInstance: false,
+      );
+      await background.close();
+      await NovelRepository(app, fetcher).addNovel(novelUrl);
+      expect(await app.listNovels(), hasLength(1));
+      await app.close();
+    });
+
+    test('new chapters are announced once, and not after reading', () async {
+      var novel = await repo.addNovel(novelUrl);
+      // Not started: nothing to announce.
+      fetcher.responses[chapterListUrl] = chapterListPage(count: 4);
+      expect(await repo.chaptersToAnnounce(), isEmpty);
+      fetcher.responses[chapterListUrl] = chapterListPage(count: 3);
+
+      final second = await repo.chapter(novel, chapter2Url);
+      novel = await repo.saveProgress(
+        novel,
+        chapter: second,
+        number: 2,
+        progress: 1,
+      );
+      expect(await repo.chaptersToAnnounce(), isEmpty);
+
+      fetcher.responses[chapterListUrl] = chapterListPage(count: 4);
+      final fresh = await repo.chaptersToAnnounce();
+      expect(fresh.single.newChapters, 1);
+      // Announced already.
+      expect(await repo.chaptersToAnnounce(), isEmpty);
+
+      // Another one: the notification counts both since last read.
+      fetcher.responses[chapterListUrl] = chapterListPage(count: 5);
+      expect((await repo.chaptersToAnnounce()).single.newChapters, 2);
+
+      // Seen in the library: not announced again in the background.
+      fetcher.responses[chapterListUrl] = chapterListPage(count: 6);
+      await repo.checkForChapters((await repo.listNovels()).single);
+      expect(await repo.chaptersToAnnounce(), isEmpty);
+    });
+
+    test('a check while reading keeps the place', () async {
+      final novel = await repo.addNovel(novelUrl);
+      final second = await repo.chapter(novel, chapter2Url);
+      await repo.saveProgress(novel, chapter: second, number: 2, progress: 0.4);
+      // The check started with the novel as it was before reading.
+      await repo.checkForChapters(novel);
+      final stored = (await repo.listNovels()).single;
+      expect(stored.chapterUrl, chapter2Url);
+      expect(stored.chapterProgress, 0.4);
+    });
+
     test('chapters are saved, so reading them again works offline', () async {
       final novel = await repo.addNovel(novelUrl);
       final first = await repo.firstChapter(novel);
@@ -231,6 +311,7 @@ void main() {
 
       final raw = await databaseFactoryFfiNoIsolate.openDatabase(path);
       await raw.execute('ALTER TABLE novels DROP COLUMN seenCount');
+      await raw.execute('ALTER TABLE novels DROP COLUMN notifiedCount');
       await raw.setVersion(6);
       await raw.close();
 
