@@ -9,6 +9,7 @@ import '../../widgets/swipe_back.dart';
 import '../../widgets/ui.dart';
 import 'add_novel_screen.dart';
 import 'chapter_reader_screen.dart';
+import 'human_check_screen.dart';
 import 'novel_cover.dart';
 import 'novel_screen.dart';
 
@@ -36,8 +37,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
   Future<void> _refresh() async {
     final messenger = ScaffoldMessenger.of(context);
-    final failed = await context.read<NovelsProvider>().checkAll();
-    if (failed > 0) {
+    final novels = context.read<NovelsProvider>();
+    final failed = await novels.checkAll();
+    // The banner explains a human check; only other failures need a note.
+    if (failed > 0 && novels.humanCheck == null) {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
@@ -106,7 +109,21 @@ class _LibraryScreenState extends State<LibraryScreen> {
           ),
         ),
       ),
-      body: body,
+      body: novels.humanCheck == null
+          ? body
+          : Column(
+              children: [
+                _HumanCheckBanner(
+                  onVerify: () async {
+                    final check = novels.humanCheck!;
+                    if (await passHumanCheck(context, check.url)) {
+                      novels.checkAll();
+                    }
+                  },
+                ),
+                Expanded(child: body),
+              ],
+            ),
       floatingActionButton: novels.novels.isEmpty
           ? null
           : FloatingActionButton.extended(
@@ -260,4 +277,39 @@ Future<void> openReader(
       ),
     ),
   );
+}
+
+/// Shown when ranobes.net put up its human check during a chapter check.
+class _HumanCheckBanner extends StatelessWidget {
+  const _HumanCheckBanner({required this.onVerify});
+
+  final VoidCallback onVerify;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: c.accent.withValues(alpha: 0.55)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.verified_user_outlined, color: c.accent),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              "ranobes.net wants to check you're human before Scry can "
+              'look for new chapters.',
+              style: TextStyle(color: c.text, fontSize: 13.5, height: 1.35),
+            ),
+          ),
+          TextButton(onPressed: onVerify, child: const Text('Verify')),
+        ],
+      ),
+    );
+  }
 }

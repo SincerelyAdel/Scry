@@ -101,6 +101,10 @@ class NovelRepository {
           await _db.setNotified(updated.id!, updated.chapterCount);
           fresh.add(updated);
         }
+      } on HumanCheckRequired {
+        // Only the person can pass the site's check, in the app. Asking
+        // about the other novels now would just get more 429s.
+        break;
       } on Exception {
         // Offline or the site is down; the next check tries again.
       }

@@ -4,11 +4,13 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/novel.dart';
+import '../../services/feed_fetcher.dart';
 import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
 import '../../theme.dart';
 import '../../utils/format.dart';
 import '../../widgets/ui.dart';
+import 'human_check_screen.dart';
 import 'library_screen.dart';
 import 'novel_cover.dart';
 
@@ -35,6 +37,7 @@ class _NovelScreenState extends State<NovelScreen> {
   /// List pages loading or loaded (site pages are newest first).
   final Set<int> _requested = {};
   final Set<int> _failed = {};
+  bool _askedHumanCheck = false;
   int _perPage = 25;
 
   /// The count the list is laid out for; follows the site when it changes.
@@ -84,12 +87,22 @@ class _NovelScreenState extends State<NovelScreen> {
           _chapters[ref.number] = ref;
         }
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _requested.remove(page);
         _failed.add(page);
       });
+      if (e is HumanCheckRequired && !_askedHumanCheck) {
+        // Once per screen; the failed pages load again after it's passed.
+        _askedHumanCheck = true;
+        showHumanCheckSnack(context, e, () {
+          _askedHumanCheck = false;
+          final pages = [..._failed];
+          setState(_failed.clear);
+          pages.forEach(_loadPage);
+        });
+      }
     }
   }
 

@@ -11,6 +11,7 @@ import 'data/novel_repository.dart';
 import 'services/background_sync.dart';
 import 'services/chapter_alerts.dart';
 import 'services/feed_fetcher.dart';
+import 'services/ranobes_session.dart';
 import 'state/settings_provider.dart';
 
 Future<void> main() async {
@@ -20,6 +21,7 @@ Future<void> main() async {
   unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky));
 
   final prefs = await SharedPreferences.getInstance();
+  await RanobesSession.load();
   final settings = SettingsProvider(prefs);
   final db = await AppDatabase.open();
   final fetcher = DioFeedFetcher();

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/chapter_alerts.dart';
+import '../../services/feed_fetcher.dart';
 import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../theme.dart';
 import '../../widgets/ui.dart';
+import 'human_check_screen.dart';
 import 'novel_cover.dart';
 
 /// Search ranobes.net by name, or paste a link to a novel or one of its
@@ -22,6 +24,7 @@ class _AddNovelScreenState extends State<AddNovelScreen> {
   final _query = TextEditingController();
   List<NovelHit>? _hits;
   String? _error;
+  Object? _failure;
   bool _searching = false;
 
   /// Results being added right now, by link.
@@ -40,13 +43,19 @@ class _AddNovelScreenState extends State<AddNovelScreen> {
     setState(() {
       _searching = true;
       _error = null;
+      _failure = null;
     });
     try {
       final hits = await context.read<NovelsProvider>().search(text);
       if (!mounted) return;
       setState(() => _hits = hits);
     } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _failure = e;
+        });
+      }
     } finally {
       if (mounted) setState(() => _searching = false);
     }
@@ -63,6 +72,8 @@ class _AddNovelScreenState extends State<AddNovelScreen> {
         ..showSnackBar(SnackBar(content: Text('Added ${novel.title}')));
       // New chapter alerts need permission on Android 13 and later.
       if (alerts) await ChapterAlerts.requestPermission();
+    } on HumanCheckRequired catch (e) {
+      if (mounted) showHumanCheckSnack(context, e, () => _add(hit));
     } catch (e) {
       messenger.showSnackBar(SnackBar(content: Text("Couldn't add it: $e")));
     } finally {
@@ -85,6 +96,7 @@ class _AddNovelScreenState extends State<AddNovelScreen> {
         icon: Icons.cloud_off_outlined,
         title: "Couldn't search",
         message: _error,
+        action: humanCheckAction(context, _failure, _search),
       );
     } else if (hits == null) {
       results = const EmptyState(

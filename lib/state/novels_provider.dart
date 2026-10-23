@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/novel_repository.dart';
 import '../models/novel.dart';
+import '../services/feed_fetcher.dart';
 import '../services/ranobes.dart';
 
 /// The novel library: what's in it, and checking for new chapters.
@@ -14,6 +15,7 @@ class NovelsProvider extends ChangeNotifier {
   bool _loaded = false;
   bool _checking = false;
   DateTime? _lastCheck;
+  HumanCheckRequired? _humanCheck;
 
   List<Novel> get novels => _novels;
   bool get loaded => _loaded;
@@ -22,6 +24,17 @@ class NovelsProvider extends ChangeNotifier {
   bool get checking => _checking;
 
   NovelRepository get repository => _repo;
+
+  /// Set when ranobes.net showed its human check during the last check
+  /// for new chapters; the library offers to pass it.
+  HumanCheckRequired? get humanCheck => _humanCheck;
+
+  /// Called once the check is passed in the in-app browser.
+  void humanCheckPassed() {
+    _humanCheck = null;
+    _lastCheck = null;
+    notifyListeners();
+  }
 
   Future<void> load() async {
     _novels = _ordered(await _repo.listNovels());
@@ -40,21 +53,25 @@ class NovelsProvider extends ChangeNotifier {
     _checking = true;
     notifyListeners();
     var failed = 0;
+    _humanCheck = null;
+    // One at a time: the site rate-limits, and a burst is what brings up
+    // its human check.
     final queue = [..._novels];
-    Future<void> worker() async {
-      while (queue.isNotEmpty) {
-        final novel = queue.removeLast();
-        try {
-          final updated = await _repo.checkForChapters(novel);
-          _replace(updated);
-          notifyListeners();
-        } on Exception {
-          failed++;
-        }
+    for (var i = 0; i < queue.length; i++) {
+      final novel = queue[i];
+      try {
+        final updated = await _repo.checkForChapters(novel);
+        _replace(updated);
+        notifyListeners();
+      } on HumanCheckRequired catch (e) {
+        // Everything after this would fail the same way.
+        _humanCheck = e;
+        failed += queue.length - i;
+        break;
+      } on Exception {
+        failed++;
       }
     }
-
-    await Future.wait([for (var i = 0; i < 3; i++) worker()]);
     // Reordered once at the end, so cards don't jump around mid-check.
     _novels = _ordered(_novels);
     _lastCheck = DateTime.now();

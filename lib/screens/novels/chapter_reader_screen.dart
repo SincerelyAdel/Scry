@@ -12,6 +12,7 @@ import '../../state/settings_provider.dart';
 import '../../theme.dart';
 import '../../widgets/swipe_back.dart';
 import '../../widgets/ui.dart';
+import 'human_check_screen.dart';
 import 'novel_screen.dart';
 
 /// Reads a novel chapter by chapter. Remembers how far down the chapter
@@ -46,6 +47,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   int _number = 0;
   bool _loading = true;
   String? _error;
+  Object? _failure;
   String? _pendingUrl;
 
   /// How far down the chapter, 0 to 1; drives the bar at the bottom.
@@ -107,6 +109,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         setState(() {
           _loading = false;
           _error = e.toString();
+          _failure = e;
         });
       }
     }
@@ -175,10 +178,16 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
           icon: Icons.cloud_off_outlined,
           title: "Couldn't load the chapter",
           message: _error,
-          action: FilledButton(
-            onPressed: () => _open(_pendingUrl, _number),
-            child: const Text('Try again'),
-          ),
+          action:
+              humanCheckAction(
+                context,
+                _failure,
+                () => _open(_pendingUrl, _number),
+              ) ??
+              FilledButton(
+                onPressed: () => _open(_pendingUrl, _number),
+                child: const Text('Try again'),
+              ),
         ),
       );
     } else {

@@ -9,6 +9,7 @@ import '../data/novel_repository.dart';
 import '../state/settings_provider.dart';
 import 'chapter_alerts.dart';
 import 'feed_fetcher.dart';
+import 'ranobes_session.dart';
 
 const _uniqueName = 'scry-periodic-refresh';
 const _taskName = 'refreshFeeds';
@@ -25,6 +26,7 @@ void backgroundSyncDispatcher() {
       // Its own connection: closing a shared one would close the app's.
       db = await AppDatabase.open(singleInstance: false);
       if (task == _chaptersTaskName) {
+        await RanobesSession.load();
         final novels = NovelRepository(db, DioFeedFetcher());
         for (final novel in await novels.chaptersToAnnounce()) {
           await ChapterAlerts.announce(novel);

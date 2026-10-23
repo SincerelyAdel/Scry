@@ -1,7 +1,27 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+import '../services/ranobes_session.dart';
 import '../theme.dart';
+
+/// Pictures from ranobes.net (novel covers): fetched one at a time with the
+/// headers of the browser that passed the site's human check, so a screen
+/// full of covers doesn't trip its rate limit. Kept for 90 days.
+final _ranobesImages = CacheManager(
+  Config(
+    'ranobesImages',
+    stalePeriod: const Duration(days: 90),
+    fileService: HttpFileService()..concurrentFetches = 1,
+  ),
+);
+
+/// The cache and headers to load [url] with: the defaults for most sites.
+({BaseCacheManager? manager, Map<String, String>? headers}) _cacheFor(
+  String url,
+) => RanobesSession.appliesTo(url)
+    ? (manager: _ranobesImages, headers: RanobesSession.headers())
+    : (manager: null, headers: null);
 
 /// A web image, kept on disk after the first view so it shows offline.
 /// Shows a soft placeholder while loading and nothing if it fails.
@@ -32,8 +52,11 @@ class NetImage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
+    final source = _cacheFor(url);
     Widget image = CachedNetworkImage(
       imageUrl: url,
+      cacheManager: source.manager,
+      httpHeaders: source.headers,
       width: width,
       height: height,
       fit: fit,
@@ -111,6 +134,8 @@ class _ImageViewerState extends State<ImageViewer> {
                 child: Center(
                   child: CachedNetworkImage(
                     imageUrl: widget.url,
+                    cacheManager: _cacheFor(widget.url).manager,
+                    httpHeaders: _cacheFor(widget.url).headers,
                     fit: BoxFit.contain,
                     placeholder: (_, _) => const CircularProgressIndicator(),
                     errorWidget: (_, _, _) => const Icon(
