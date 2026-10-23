@@ -14,6 +14,7 @@ class AppCard extends StatelessWidget {
     this.onLongPress,
     this.padding = const EdgeInsets.all(16),
     this.highlight = false,
+    this.glow = false,
   });
 
   final Widget child;
@@ -24,16 +25,22 @@ class AppCard extends StatelessWidget {
   /// Gold edge, e.g. for unread articles.
   final bool highlight;
 
+  /// A full gold edge with a soft glow around it, for something that
+  /// should catch the eye, e.g. a novel with new chapters.
+  final bool glow;
+
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
-    return Material(
+    final card = Material(
       color: c.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: highlight ? c.accent.withValues(alpha: 0.55) : c.border,
-        ),
+        side: glow
+            ? BorderSide(color: c.accent, width: 1.5)
+            : BorderSide(
+                color: highlight ? c.accent.withValues(alpha: 0.55) : c.border,
+              ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -41,6 +48,20 @@ class AppCard extends StatelessWidget {
         onLongPress: onLongPress,
         child: Padding(padding: padding, child: child),
       ),
+    );
+    if (!glow) return card;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: c.accent.withValues(alpha: 0.35),
+            blurRadius: 18,
+            spreadRadius: 1,
+          ),
+        ],
+      ),
+      child: card,
     );
   }
 }

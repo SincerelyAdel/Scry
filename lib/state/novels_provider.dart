@@ -24,7 +24,7 @@ class NovelsProvider extends ChangeNotifier {
   NovelRepository get repository => _repo;
 
   Future<void> load() async {
-    _novels = await _repo.listNovels();
+    _novels = _ordered(await _repo.listNovels());
     _loaded = true;
     notifyListeners();
   }
@@ -55,6 +55,8 @@ class NovelsProvider extends ChangeNotifier {
     }
 
     await Future.wait([for (var i = 0; i < 3; i++) worker()]);
+    // Reordered once at the end, so cards don't jump around mid-check.
+    _novels = _ordered(_novels);
     _lastCheck = DateTime.now();
     _checking = false;
     notifyListeners();
@@ -96,14 +98,23 @@ class NovelsProvider extends ChangeNotifier {
     );
     _replace(updated);
     // Most recently read first.
-    _novels = [
+    _novels = _ordered([
       updated,
       for (final n in _novels)
         if (n.id != updated.id) n,
-    ];
+    ]);
     notifyListeners();
     return updated;
   }
+
+  /// Novels with new chapters first; otherwise the order is kept (most
+  /// recently read first).
+  static List<Novel> _ordered(List<Novel> novels) => [
+    for (final n in novels)
+      if (n.newChapters > 0) n,
+    for (final n in novels)
+      if (n.newChapters == 0) n,
+  ];
 
   void _replace(Novel novel) {
     _novels = [for (final n in _novels) n.id == novel.id ? novel : n];

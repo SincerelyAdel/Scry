@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scry/data/app_database.dart';
 import 'package:scry/data/novel_repository.dart';
+import 'package:scry/models/novel.dart';
+import 'package:scry/state/novels_provider.dart';
 import 'package:scry/services/ranobes.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -226,6 +228,31 @@ void main() {
       fetcher.responses[chapterListUrl] = chapterListPage(count: 6);
       await repo.checkForChapters((await repo.listNovels()).single);
       expect(await repo.chaptersToAnnounce(), isEmpty);
+    });
+
+    test('novels with new chapters come first in the library', () async {
+      Novel novel(int book, String title, {required int count, int? seen}) =>
+          Novel(
+            url: 'https://ranobes.net/novels/$book-x.html',
+            bookId: book,
+            title: title,
+            chapterCount: count,
+            addedDate: DateTime(2026, 10, 1),
+            chapterUrl: seen == null
+                ? null
+                : 'https://ranobes.net/x-$book/1.html',
+            chapterNumber: seen ?? 0,
+            seenCount: seen ?? 0,
+            readAt: DateTime(2026, 10, book),
+          );
+      // Read most recently first: C, then B, then A.
+      await db.insertNovel(novel(1, 'A', count: 12, seen: 10));
+      await db.insertNovel(novel(2, 'B', count: 10, seen: 10));
+      await db.insertNovel(novel(3, 'C', count: 5, seen: 5));
+      final library = NovelsProvider(repo);
+      await library.load();
+      expect([for (final n in library.novels) n.title], ['A', 'C', 'B']);
+      library.dispose();
     });
 
     test('a check while reading keeps the place', () async {

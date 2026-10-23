@@ -86,8 +86,9 @@ The **Feeds | Novels** switch in the top bar flips the whole app between
 the two sides; the choice is remembered.
 
 - **Library**: your novels, most recently read first, each with its cover,
-  the chapter you're on, how many are left, and a **new** badge for
-  chapters released since you last read. Opening the library (at most every
+  the chapter you're on and how many are left. Novels with chapters
+  released since you last read come first, with a gold glow and
+  "N new chapters". Opening the library (at most every
   half hour) or pulling down checks for new chapters.
 - **New chapter alerts** (Android): about once an hour, in the background,
   the novels you've started are checked and a notification says how many

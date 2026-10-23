@@ -137,6 +137,7 @@ class NovelCard extends StatelessWidget {
 
     return AppCard(
       padding: const EdgeInsets.all(14),
+      glow: fresh > 0,
       onTap: () => Navigator.of(context).push(
         SwipeBackRoute<void>(builder: (_) => NovelScreen(novelId: novel.id!)),
       ),
@@ -170,6 +171,23 @@ class NovelCard extends StatelessWidget {
                     style: TextStyle(color: c.muted, fontSize: 13),
                   ),
                 ],
+                if (fresh > 0) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.auto_awesome, size: 16, color: c.accent),
+                      const SizedBox(width: 6),
+                      Text(
+                        fresh == 1 ? '1 new chapter' : '$fresh new chapters',
+                        style: TextStyle(
+                          color: c.accent,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const Spacer(),
                 if (novel.started && novel.chapterTitle != null)
                   Text(
@@ -189,10 +207,6 @@ class NovelCard extends StatelessWidget {
                         style: TextStyle(color: c.muted, fontSize: 12.5),
                       ),
                     ),
-                    if (fresh > 0) ...[
-                      const SizedBox(width: 8),
-                      Tag('$fresh new', color: c.accent),
-                    ],
                   ],
                 ),
                 if (novel.started && novel.chapterNumber > 0) ...[
