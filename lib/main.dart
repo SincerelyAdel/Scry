@@ -25,5 +25,5 @@ Future<void> main() async {
   await BackgroundSync.initialize();
   unawaited(BackgroundSync.apply(settings.syncInterval));
 
-  runApp(FeedViewerApp(repository: repository, settings: settings));
+  runApp(ScryApp(repository: repository, settings: settings));
 }

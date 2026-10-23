@@ -1,4 +1,4 @@
-package com.sincerelyadel.feedviewer
+package com.sincerelyadel.scry
 
 import io.flutter.embedding.android.FlutterActivity
 

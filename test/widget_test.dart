@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:feedviewer/app.dart';
-import 'package:feedviewer/data/app_database.dart';
-import 'package:feedviewer/data/feed_repository.dart';
-import 'package:feedviewer/state/settings_provider.dart';
+import 'package:scry/app.dart';
+import 'package:scry/data/app_database.dart';
+import 'package:scry/data/feed_repository.dart';
+import 'package:scry/state/settings_provider.dart';
 
 import 'support/fakes.dart';
 import 'support/fixtures.dart';
@@ -27,7 +27,7 @@ void main() {
 
   Future<void> pumpApp(WidgetTester tester) async {
     await tester.pumpWidget(
-      FeedViewerApp(
+      ScryApp(
         repository: repo,
         settings: SettingsProvider(prefs),
         refreshOnLaunch: false,
@@ -176,7 +176,7 @@ void main() {
       tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
       ThemeMode.dark,
     );
-    expect(find.text('FeedViewer'), findsOneWidget);
+    expect(find.text('Scry'), findsOneWidget);
 
     // Settings open from the gear in the header.
     await tester.tap(find.byIcon(Icons.settings_outlined));

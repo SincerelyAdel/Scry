@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:feedviewer/data/app_database.dart';
-import 'package:feedviewer/data/feed_repository.dart';
-import 'package:feedviewer/models/article_sort.dart';
-import 'package:feedviewer/models/feed.dart';
-import 'package:feedviewer/services/feed_fetcher.dart';
-import 'package:feedviewer/services/feed_parser.dart';
+import 'package:scry/data/app_database.dart';
+import 'package:scry/data/feed_repository.dart';
+import 'package:scry/models/article_sort.dart';
+import 'package:scry/models/feed.dart';
+import 'package:scry/services/feed_fetcher.dart';
+import 'package:scry/services/feed_parser.dart';
 
 import 'support/fakes.dart';
 import 'support/fixtures.dart';
@@ -210,8 +210,9 @@ void main() {
     });
 
     test('by feed groups alphabetically, newest first within', () async {
-      final titles = (await repo.listArticles(sort: ArticleSort.byFeed))
-          .map((a) => a.title);
+      final titles = (await repo.listArticles(
+        sort: ArticleSort.byFeed,
+      )).map((a) => a.title);
       expect(titles, [
         'a item 2',
         'a item 1',

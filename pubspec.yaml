@@ -1,4 +1,4 @@
-name: feedviewer
+name: scry
 description: "Offline-first RSS and Atom reader."
 publish_to: 'none'
 version: 0.1.0+1

@@ -11,8 +11,8 @@ import 'theme.dart';
 import 'widgets/app_header.dart';
 import 'widgets/gold_glow_border.dart';
 
-class FeedViewerApp extends StatefulWidget {
-  const FeedViewerApp({
+class ScryApp extends StatefulWidget {
+  const ScryApp({
     super.key,
     required this.repository,
     required this.settings,
@@ -26,10 +26,10 @@ class FeedViewerApp extends StatefulWidget {
   final bool refreshOnLaunch;
 
   @override
-  State<FeedViewerApp> createState() => _FeedViewerAppState();
+  State<ScryApp> createState() => _ScryAppState();
 }
 
-class _FeedViewerAppState extends State<FeedViewerApp> {
+class _ScryAppState extends State<ScryApp> {
   late final FeedsProvider _feeds;
   late final ArticlesProvider _articles;
   late var _sort = widget.settings.sort;
@@ -91,7 +91,7 @@ class _FeedViewerAppState extends State<FeedViewerApp> {
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) => MaterialApp(
-          title: 'FeedViewer',
+          title: 'Scry',
           debugShowCheckedModeBanner: false,
           themeMode: settings.themeMode,
           theme: buildAppTheme(lightPalette),

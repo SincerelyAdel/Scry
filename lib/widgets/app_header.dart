@@ -8,7 +8,7 @@ import '../theme.dart';
 /// Shared with [AppHeader] so it can push pages from above the navigator.
 final navigatorKey = GlobalKey<NavigatorState>();
 
-/// The FeedViewer bar fixed at the top of every page: the app name (tap it
+/// The Scry bar fixed at the top of every page: the app name (tap it
 /// to go back to the start), a light/dark toggle and Settings. It sits above
 /// the navigator, so it never scrolls away or slides out with a page.
 class AppHeader extends StatefulWidget {
@@ -71,7 +71,7 @@ class _AppHeaderState extends State<AppHeader> {
                       Icon(Icons.auto_awesome, color: c.accent, size: 22),
                       const SizedBox(width: 10),
                       Text(
-                        'FeedViewer',
+                        'Scry',
                         style: TextStyle(
                           fontFamily: kSerif,
                           color: c.text,

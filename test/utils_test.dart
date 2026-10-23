@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:feedviewer/utils/date_parser.dart';
-import 'package:feedviewer/utils/format.dart';
-import 'package:feedviewer/utils/html_text.dart';
+import 'package:scry/utils/date_parser.dart';
+import 'package:scry/utils/format.dart';
+import 'package:scry/utils/html_text.dart';
 
 void main() {
   group('parseFeedDate', () {

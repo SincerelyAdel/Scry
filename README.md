@@ -1,4 +1,4 @@
-# FeedViewer
+# Scry
 
 A calm, offline-first RSS/Atom reader for Android and iOS, built with Flutter.
 It shares its look with its sibling app, RepoViewer: near-black and gold (or

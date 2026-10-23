@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// FeedViewer's colours, shared with its sibling app RepoViewer: near-black
+/// Scry's colours, shared with its sibling app RepoViewer: near-black
 /// with gold in dark mode, warm cream with deeper gold in light mode.
 @immutable
 class AppPalette extends ThemeExtension<AppPalette> {

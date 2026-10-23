@@ -8,7 +8,7 @@ import '../data/feed_repository.dart';
 import '../state/settings_provider.dart';
 import 'feed_fetcher.dart';
 
-const _uniqueName = 'feedviewer-periodic-refresh';
+const _uniqueName = 'scry-periodic-refresh';
 const _taskName = 'refreshFeeds';
 
 /// Entry point for the background isolate Workmanager spins up. Must be a
