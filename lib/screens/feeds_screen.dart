@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../models/feed.dart';
 import '../state/feeds_provider.dart';
 import '../utils/format.dart';
+import '../theme.dart';
 import '../widgets/add_feed_dialog.dart';
+import '../widgets/ui.dart';
 
 /// Subscriptions: add, refresh, remove, and jump to one feed's articles.
 class FeedsScreen extends StatelessWidget {
@@ -43,14 +45,30 @@ class FeedsScreen extends StatelessWidget {
       body: !feeds.loaded
           ? const Center(child: CircularProgressIndicator())
           : feeds.feeds.isEmpty
-          ? const Center(child: Text('No subscriptions yet.'))
-          : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 88),
-              itemCount: feeds.feeds.length,
-              itemBuilder: (context, i) => _FeedTile(
-                feed: feeds.feeds[i],
-                onTap: () => onOpenFeed(feeds.feeds[i]),
-              ),
+          ? const EmptyState(
+              icon: Icons.rss_feed,
+              title: 'No subscriptions yet',
+              message: 'Tap Add feed to subscribe to a blog or feed.',
+            )
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final pad = pagePadding(context);
+                final wide = constraints.maxWidth > 600;
+                return GridView.builder(
+                  padding: EdgeInsets.fromLTRB(pad, 8, pad, 96),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: wide ? 2 : 1,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    mainAxisExtent: 128,
+                  ),
+                  itemCount: feeds.feeds.length,
+                  itemBuilder: (context, i) => _FeedTile(
+                    feed: feeds.feeds[i],
+                    onTap: () => onOpenFeed(feeds.feeds[i]),
+                  ),
+                );
+              },
             ),
     );
   }
@@ -75,31 +93,75 @@ class _FeedTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final c = context.palette;
     final failed = feed.syncStatus == SyncStatus.error;
     final updated = feed.lastUpdated == null
-        ? 'never updated'
-        : 'updated ${relativeDate(feed.lastUpdated!)}';
+        ? 'Never updated'
+        : 'Updated ${relativeDate(feed.lastUpdated!)}';
 
-    return ListTile(
+    return AppCard(
       onTap: onTap,
-      leading: _FeedIcon(feed: feed),
-      title: Text(feed.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: Text(
-        failed
-            ? 'Refresh failed: ${feed.lastError ?? 'unknown error'}'
-            : '${feed.articleCount} articles · ${feed.unreadCount} unread · '
-                  '$updated',
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-        style: failed ? TextStyle(color: theme.colorScheme.error) : null,
-      ),
-      trailing: PopupMenuButton<_FeedAction>(
-        onSelected: (action) => _onAction(context, action),
-        itemBuilder: (_) => const [
-          PopupMenuItem(value: _FeedAction.refresh, child: Text('Refresh')),
-          PopupMenuItem(value: _FeedAction.copyUrl, child: Text('Copy URL')),
-          PopupMenuItem(value: _FeedAction.delete, child: Text('Unsubscribe')),
+      padding: const EdgeInsets.fromLTRB(16, 14, 4, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              FeedAvatar(title: feed.title, favicon: feed.favicon, size: 32),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  feed.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: c.text,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (feed.unreadCount > 0) _UnreadPill(feed.unreadCount),
+              PopupMenuButton<_FeedAction>(
+                icon: Icon(Icons.more_horiz, color: c.muted, size: 20),
+                tooltip: 'More',
+                onSelected: (action) => _onAction(context, action),
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: _FeedAction.refresh,
+                    child: Text('Refresh'),
+                  ),
+                  PopupMenuItem(
+                    value: _FeedAction.copyUrl,
+                    child: Text('Copy URL'),
+                  ),
+                  PopupMenuItem(
+                    value: _FeedAction.delete,
+                    child: Text('Unsubscribe'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Text(
+              failed
+                  ? 'Refresh failed: ${feed.lastError ?? 'unknown error'}'
+                  : '${feed.articleCount} '
+                        '${feed.articleCount == 1 ? 'article' : 'articles'} · '
+                        '${feed.unreadCount} unread',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: failed ? c.danger : c.muted,
+                fontSize: 13.5,
+              ),
+            ),
+          ),
+          const Spacer(),
+          Text(updated, style: TextStyle(color: c.faint, fontSize: 12)),
         ],
       ),
     );
@@ -152,36 +214,28 @@ class _FeedTile extends StatelessWidget {
 
 enum _FeedAction { refresh, copyUrl, delete }
 
-/// Favicon if we have one, otherwise the feed's initial.
-class _FeedIcon extends StatelessWidget {
-  const _FeedIcon({required this.feed});
+/// Gold count of unread articles.
+class _UnreadPill extends StatelessWidget {
+  const _UnreadPill(this.count);
 
-  final Feed feed;
+  final int count;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final fallback = CircleAvatar(
-      radius: 18,
-      backgroundColor: scheme.secondaryContainer,
-      foregroundColor: scheme.onSecondaryContainer,
-      child: Text(
-        feed.title.isEmpty ? '?' : feed.title.characters.first.toUpperCase(),
+    final c = context.palette;
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: c.button,
+        borderRadius: BorderRadius.circular(10),
       ),
-    );
-    final favicon = feed.favicon;
-    if (favicon == null) return fallback;
-    return CircleAvatar(
-      radius: 18,
-      backgroundColor: scheme.surfaceContainerHighest,
-      child: ClipOval(
-        child: Image.memory(
-          favicon,
-          width: 22,
-          height: 22,
-          fit: BoxFit.contain,
-          gaplessPlayback: true,
-          errorBuilder: (_, _, _) => fallback,
+      child: Text(
+        count > 999 ? '999+' : '$count',
+        style: TextStyle(
+          color: c.onButton,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

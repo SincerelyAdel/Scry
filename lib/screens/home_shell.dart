@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/feed.dart';
@@ -6,9 +7,9 @@ import '../state/articles_provider.dart';
 import '../state/feeds_provider.dart';
 import 'feeds_screen.dart';
 import 'inbox_screen.dart';
-import 'settings_screen.dart';
 
-/// Bottom navigation between the inbox, feed management and settings.
+/// Bottom navigation between the inbox and feed management. Settings live
+/// in the header.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
 
@@ -27,6 +28,8 @@ class _HomeShellState extends State<HomeShell> {
     // pick up whatever it fetched when the app comes back to the front.
     _lifecycle = AppLifecycleListener(
       onResume: () {
+        // Android can bring the system bars back while we're in the background.
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
         if (!mounted) return;
         context.read<FeedsProvider>().load();
         context.read<ArticlesProvider>().reload();
@@ -54,37 +57,38 @@ class _HomeShellState extends State<HomeShell> {
         children: [
           const InboxScreen(),
           FeedsScreen(onOpenFeed: _openFeed),
-          const SettingsScreen(),
         ],
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (i) => setState(() => _index = i),
-        destinations: [
-          NavigationDestination(
-            icon: Badge(
-              isLabelVisible: unread > 0,
-              label: Text(unread > 999 ? '999+' : '$unread'),
-              child: const Icon(Icons.inbox_outlined),
+      bottomNavigationBar: DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Theme.of(context).dividerColor),
+          ),
+        ),
+        child: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (i) => setState(() => _index = i),
+          destinations: [
+            NavigationDestination(
+              icon: Badge(
+                isLabelVisible: unread > 0,
+                label: Text(unread > 999 ? '999+' : '$unread'),
+                child: const Icon(Icons.inbox_outlined),
+              ),
+              selectedIcon: Badge(
+                isLabelVisible: unread > 0,
+                label: Text(unread > 999 ? '999+' : '$unread'),
+                child: const Icon(Icons.inbox),
+              ),
+              label: 'Inbox',
             ),
-            selectedIcon: Badge(
-              isLabelVisible: unread > 0,
-              label: Text(unread > 999 ? '999+' : '$unread'),
-              child: const Icon(Icons.inbox),
+            const NavigationDestination(
+              icon: Icon(Icons.rss_feed_outlined),
+              selectedIcon: Icon(Icons.rss_feed),
+              label: 'Feeds',
             ),
-            label: 'Inbox',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.rss_feed_outlined),
-            selectedIcon: Icon(Icons.rss_feed),
-            label: 'Feeds',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

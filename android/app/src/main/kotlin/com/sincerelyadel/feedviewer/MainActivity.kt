@@ -1,4 +1,4 @@
-package com.sincerelyadel.snippefy
+package com.sincerelyadel.feedviewer
 
 import io.flutter.embedding.android.FlutterActivity
 

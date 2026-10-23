@@ -42,7 +42,7 @@ class DioFeedFetcher implements FeedFetcher {
               receiveTimeout: const Duration(seconds: 30),
               // Some hosts reject requests without a browser-ish UA.
               headers: {
-                'User-Agent': 'Snippefy/0.1 (Flutter RSS reader)',
+                'User-Agent': 'FeedViewer/0.1 (Flutter RSS reader)',
                 'Accept':
                     'application/rss+xml, application/atom+xml, '
                     'application/xml;q=0.9, text/xml;q=0.9, text/html;q=0.8, '

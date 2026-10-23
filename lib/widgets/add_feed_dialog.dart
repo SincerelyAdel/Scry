@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/feed.dart';
 import '../state/feeds_provider.dart';
+import '../theme.dart';
 
 /// Starter feeds for AI/ML reading. Papers with Code shut down in 2025 and
 /// Anthropic doesn't publish an RSS feed, so they aren't listed.
@@ -97,7 +98,11 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
               const SizedBox(height: 20),
               Text(
                 'Suggestions',
-                style: Theme.of(context).textTheme.labelLarge,
+                style: TextStyle(
+                  color: context.palette.muted,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
               const SizedBox(height: 8),
               Wrap(

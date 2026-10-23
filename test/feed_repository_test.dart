@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:snippefy/data/app_database.dart';
-import 'package:snippefy/data/feed_repository.dart';
-import 'package:snippefy/models/article_sort.dart';
-import 'package:snippefy/models/feed.dart';
-import 'package:snippefy/services/feed_fetcher.dart';
-import 'package:snippefy/services/feed_parser.dart';
+import 'package:feedviewer/data/app_database.dart';
+import 'package:feedviewer/data/feed_repository.dart';
+import 'package:feedviewer/models/article_sort.dart';
+import 'package:feedviewer/models/feed.dart';
+import 'package:feedviewer/services/feed_fetcher.dart';
+import 'package:feedviewer/services/feed_parser.dart';
 
 import 'support/fakes.dart';
 import 'support/fixtures.dart';

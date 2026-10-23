@@ -8,7 +8,9 @@ import '../models/article.dart';
 import '../state/articles_provider.dart';
 import '../state/settings_provider.dart';
 import '../utils/format.dart';
+import '../theme.dart';
 import '../utils/html_text.dart';
+import '../widgets/ui.dart';
 
 /// Full article reader. Opening an article marks it read.
 class ArticleDetailScreen extends StatefulWidget {
@@ -76,7 +78,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final c = context.palette;
     final fontSize = context.select<SettingsProvider, double>(
       (s) => s.fontSize,
     );
@@ -111,56 +113,79 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       ),
       body: SelectionArea(
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+          padding: EdgeInsets.fromLTRB(
+            pagePadding(context) + 4,
+            8,
+            pagePadding(context) + 4,
+            40,
+          ),
           children: [
             if (_article.feedTitle != null)
-              Text(
-                _article.feedTitle!.toUpperCase(),
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: theme.colorScheme.primary,
-                  letterSpacing: 0.8,
-                ),
+              Row(
+                children: [
+                  Icon(Icons.rss_feed, size: 15, color: c.accent),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      _article.feedTitle!.toUpperCase(),
+                      style: TextStyle(
+                        color: c.accent,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.9,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
               _article.title,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w600,
+              style: TextStyle(
+                fontFamily: kSerif,
+                color: c.text,
+                fontSize: 28,
+                height: 1.25,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text(
               [
                 if (_article.author != null) 'By ${_article.author}',
                 fullDate(_article.displayDate),
               ].join(' · '),
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+              style: TextStyle(color: c.muted, fontSize: 14),
             ),
-            const Divider(height: 32),
+            const SizedBox(height: 20),
+            Divider(color: c.border),
+            const SizedBox(height: 20),
             if (_loading)
               const Center(child: CircularProgressIndicator())
             else if (_body == null || _body!.isEmpty)
               Text(
                 'This feed only provides a link for this article.',
-                style: theme.textTheme.bodyLarge?.copyWith(
+                style: TextStyle(
+                  fontFamily: kSerif,
                   fontStyle: FontStyle.italic,
-                  color: theme.colorScheme.onSurfaceVariant,
+                  color: c.muted,
+                  fontSize: fontSize,
                 ),
               )
             else
               Text(
                 _body!,
-                style: theme.textTheme.bodyLarge?.copyWith(
+                style: TextStyle(
+                  fontFamily: kSerif,
+                  color: c.text,
                   fontSize: fontSize,
-                  height: 1.55,
+                  height: 1.6,
                 ),
               ),
             if (hasLink) ...[
-              const SizedBox(height: 32),
+              const SizedBox(height: 36),
               Center(
-                child: FilledButton.tonalIcon(
+                child: FilledButton.icon(
                   onPressed: _openInBrowser,
                   icon: const Icon(Icons.open_in_browser),
                   label: const Text('Open in browser'),

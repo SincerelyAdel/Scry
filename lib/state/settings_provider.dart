@@ -15,30 +15,15 @@ enum SyncInterval {
   final Duration? duration;
 }
 
-/// Accent colours offered in settings. Material 3 builds the full scheme
-/// from the seed.
-const themeSeedColors = <String, Color>{
-  'Indigo': Colors.indigo,
-  'Teal': Colors.teal,
-  'Green': Colors.green,
-  'Amber': Colors.amber,
-  'Deep orange': Colors.deepOrange,
-  'Pink': Colors.pink,
-  'Purple': Colors.deepPurple,
-  'Blue grey': Colors.blueGrey,
-};
-
 /// User preferences, persisted with shared_preferences.
 class SettingsProvider extends ChangeNotifier {
   SettingsProvider(this._prefs)
     : _themeMode = _enumOr(
         ThemeMode.values,
         _prefs.getString(_kThemeMode),
-        ThemeMode.system,
+        // Dark gold by default, like RepoViewer.
+        ThemeMode.dark,
       ),
-      _seedName = themeSeedColors.containsKey(_prefs.getString(_kSeed))
-          ? _prefs.getString(_kSeed)!
-          : themeSeedColors.keys.first,
       _fontSize = (_prefs.getDouble(_kFontSize) ?? defaultFontSize).clamp(
         minFontSize,
         maxFontSize,
@@ -57,7 +42,6 @@ class SettingsProvider extends ChangeNotifier {
   final SharedPreferences _prefs;
 
   static const _kThemeMode = 'themeMode';
-  static const _kSeed = 'seedColor';
   static const _kFontSize = 'articleFontSize';
   static const _kSort = 'articleSort';
   static const _kSyncInterval = 'syncInterval';
@@ -67,14 +51,11 @@ class SettingsProvider extends ChangeNotifier {
   static const defaultFontSize = 17.0;
 
   ThemeMode _themeMode;
-  String _seedName;
   double _fontSize;
   ArticleSort _sort;
   SyncInterval _syncInterval;
 
   ThemeMode get themeMode => _themeMode;
-  String get seedName => _seedName;
-  Color get seedColor => themeSeedColors[_seedName]!;
 
   /// Body text size in the article reader.
   double get fontSize => _fontSize;
@@ -87,13 +68,6 @@ class SettingsProvider extends ChangeNotifier {
     _themeMode = mode;
     notifyListeners();
     await _prefs.setString(_kThemeMode, mode.name);
-  }
-
-  Future<void> setSeed(String name) async {
-    if (name == _seedName || !themeSeedColors.containsKey(name)) return;
-    _seedName = name;
-    notifyListeners();
-    await _prefs.setString(_kSeed, name);
   }
 
   Future<void> setFontSize(double size) async {
