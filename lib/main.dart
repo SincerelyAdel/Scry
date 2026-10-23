@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
@@ -12,6 +13,9 @@ import 'state/settings_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Full screen, like RepoViewer: swiping in from an edge shows the system
+  // bars for a moment, then they hide again.
+  unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky));
 
   final prefs = await SharedPreferences.getInstance();
   final settings = SettingsProvider(prefs);
@@ -21,5 +25,5 @@ Future<void> main() async {
   await BackgroundSync.initialize();
   unawaited(BackgroundSync.apply(settings.syncInterval));
 
-  runApp(SnippefyApp(repository: repository, settings: settings));
+  runApp(ScryApp(repository: repository, settings: settings));
 }

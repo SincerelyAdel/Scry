@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:snippefy/app.dart';
-import 'package:snippefy/data/app_database.dart';
-import 'package:snippefy/data/feed_repository.dart';
-import 'package:snippefy/state/settings_provider.dart';
+import 'package:scry/app.dart';
+import 'package:scry/data/app_database.dart';
+import 'package:scry/data/feed_repository.dart';
+import 'package:scry/state/settings_provider.dart';
 
 import 'support/fakes.dart';
 import 'support/fixtures.dart';
@@ -27,7 +27,7 @@ void main() {
 
   Future<void> pumpApp(WidgetTester tester) async {
     await tester.pumpWidget(
-      SnippefyApp(
+      ScryApp(
         repository: repo,
         settings: SettingsProvider(prefs),
         refreshOnLaunch: false,
@@ -47,10 +47,7 @@ void main() {
 
   testWidgets('empty inbox invites adding a feed', (tester) async {
     await pumpApp(tester);
-    expect(
-      find.text('No feeds yet.\nAdd one to fill your inbox.'),
-      findsOneWidget,
-    );
+    expect(find.text('No feeds yet'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, 'Add feed'), findsOneWidget);
   });
 
@@ -173,25 +170,30 @@ void main() {
     expect(find.text('Second post'), findsOneWidget);
   });
 
-  testWidgets('dark mode and accent colour persist', (tester) async {
+  testWidgets('starts dark; theme choice persists', (tester) async {
     await pumpApp(tester);
+    expect(
+      tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode,
+      ThemeMode.dark,
+    );
+    expect(find.text('Scry'), findsOneWidget);
 
-    await tester.tap(find.text('Settings'));
+    // Settings open from the gear in the header.
+    await tester.tap(find.byIcon(Icons.settings_outlined));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Dark'));
+    await tester.tap(find.text('Light'));
     await tester.pumpAndSettle();
 
     final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
-    expect(app.themeMode, ThemeMode.dark);
+    expect(app.themeMode, ThemeMode.light);
+    expect(prefs.getString('themeMode'), 'light');
+
+    // The header toggle flips straight back to dark.
+    await tester.tap(find.byIcon(Icons.dark_mode_outlined).first);
+    await tester.pumpAndSettle();
     expect(prefs.getString('themeMode'), 'dark');
 
-    await tester.tap(find.byTooltip('Teal'));
-    await tester.pumpAndSettle();
-    expect(prefs.getString('seedColor'), 'Teal');
-
-    // A fresh settings object reads the saved values back.
-    final reloaded = SettingsProvider(prefs);
-    expect(reloaded.themeMode, ThemeMode.dark);
-    expect(reloaded.seedName, 'Teal');
+    // A fresh settings object reads the saved value back.
+    expect(SettingsProvider(prefs).themeMode, ThemeMode.dark);
   });
 }

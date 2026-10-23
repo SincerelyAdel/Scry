@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:snippefy/data/app_database.dart';
-import 'package:snippefy/services/feed_fetcher.dart';
+import 'package:scry/data/app_database.dart';
+import 'package:scry/services/feed_fetcher.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 /// Serves canned responses keyed by URL. Unknown URLs fail like a 404.

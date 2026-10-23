@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/article_sort.dart';
 import '../services/background_sync.dart';
 import '../state/settings_provider.dart';
+import '../theme.dart';
+import '../widgets/ui.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -11,189 +13,155 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = context.watch<SettingsProvider>();
-    final theme = Theme.of(context);
+    final c = context.palette;
+    final pad = pagePadding(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 24),
+        padding: EdgeInsets.fromLTRB(pad, 0, pad, 32),
         children: [
-          const _Section('Appearance'),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SegmentedButton<ThemeMode>(
-              segments: const [
-                ButtonSegment(
-                  value: ThemeMode.light,
-                  icon: Icon(Icons.light_mode_outlined),
-                  label: Text('Light'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.system,
-                  icon: Icon(Icons.brightness_auto_outlined),
-                  label: Text('System'),
-                ),
-                ButtonSegment(
-                  value: ThemeMode.dark,
-                  icon: Icon(Icons.dark_mode_outlined),
-                  label: Text('Dark'),
-                ),
-              ],
-              selected: {settings.themeMode},
-              onSelectionChanged: (s) => settings.setThemeMode(s.first),
-            ),
-          ),
-          const ListTile(title: Text('Accent colour')),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Wrap(
-              spacing: 12,
-              runSpacing: 12,
+          const SectionLabel('APPEARANCE'),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final entry in themeSeedColors.entries)
-                  _ColorSwatch(
-                    name: entry.key,
-                    color: entry.value,
-                    selected: entry.key == settings.seedName,
-                    onTap: () => settings.setSeed(entry.key),
+                SegmentedButton<ThemeMode>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ThemeMode.light,
+                      icon: Icon(Icons.light_mode_outlined),
+                      label: Text('Light'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.system,
+                      icon: Icon(Icons.brightness_auto_outlined),
+                      label: Text('System'),
+                    ),
+                    ButtonSegment(
+                      value: ThemeMode.dark,
+                      icon: Icon(Icons.dark_mode_outlined),
+                      label: Text('Dark'),
+                    ),
+                  ],
+                  selected: {settings.themeMode},
+                  onSelectionChanged: (s) => settings.setThemeMode(s.first),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Article text size',
+                        style: TextStyle(color: c.text, fontSize: 15),
+                      ),
+                    ),
+                    Text(
+                      '${settings.fontSize.round()}',
+                      style: TextStyle(
+                        color: c.accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+                Slider(
+                  value: settings.fontSize,
+                  min: SettingsProvider.minFontSize,
+                  max: SettingsProvider.maxFontSize,
+                  divisions:
+                      (SettingsProvider.maxFontSize -
+                              SettingsProvider.minFontSize)
+                          .round(),
+                  label: '${settings.fontSize.round()}',
+                  onChanged: settings.setFontSize,
+                ),
+                Text(
+                  'The quick brown fox reads its feeds offline.',
+                  style: TextStyle(
+                    fontFamily: kSerif,
+                    color: c.text,
+                    fontSize: settings.fontSize,
+                    height: 1.55,
                   ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          ListTile(
-            title: const Text('Article text size'),
-            trailing: Text('${settings.fontSize.round()}'),
-          ),
-          Slider(
-            value: settings.fontSize,
-            min: SettingsProvider.minFontSize,
-            max: SettingsProvider.maxFontSize,
-            divisions:
-                (SettingsProvider.maxFontSize - SettingsProvider.minFontSize)
-                    .round(),
-            label: '${settings.fontSize.round()}',
-            onChanged: settings.setFontSize,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Text(
-              'The quick brown fox reads its feeds offline.',
-              style: theme.textTheme.bodyLarge?.copyWith(
-                fontSize: settings.fontSize,
-                height: 1.55,
+          const SectionLabel('INBOX ORDER'),
+          AppCard(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: RadioGroup<ArticleSort>(
+              groupValue: settings.sort,
+              onChanged: (sort) {
+                if (sort != null) settings.setSort(sort);
+              },
+              child: Column(
+                children: [
+                  for (final sort in ArticleSort.values)
+                    RadioListTile<ArticleSort>(
+                      value: sort,
+                      title: Text(
+                        sort.label,
+                        style: TextStyle(color: c.text, fontSize: 15),
+                      ),
+                    ),
+                ],
               ),
             ),
           ),
-          const _Section('Inbox'),
-          RadioGroup<ArticleSort>(
-            groupValue: settings.sort,
-            onChanged: (sort) {
-              if (sort != null) settings.setSort(sort);
-            },
+          const SectionLabel('SYNC'),
+          AppCard(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final sort in ArticleSort.values)
-                  RadioListTile<ArticleSort>(
-                    value: sort,
-                    title: Text(sort.label),
-                  ),
-              ],
-            ),
-          ),
-          const _Section('Sync'),
-          ListTile(
-            title: const Text('Background refresh'),
-            subtitle: Text(
-              BackgroundSync.supported
-                  ? 'Fetches new articles while the app is closed, '
-                        'on Wi-Fi or mobile data when the battery is not low.'
-                  : 'Not available on this platform. Feeds refresh when '
-                        'the app opens and when you pull down in the inbox.',
-            ),
-            trailing: DropdownButton<SyncInterval>(
-              value: settings.syncInterval,
-              onChanged: BackgroundSync.supported
-                  ? (v) {
-                      if (v != null) settings.setSyncInterval(v);
-                    }
-                  : null,
-              items: [
-                for (final interval in SyncInterval.values)
-                  DropdownMenuItem(
-                    value: interval,
-                    child: Text(interval.label),
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Background refresh',
+                        style: TextStyle(color: c.text, fontSize: 15),
+                      ),
+                    ),
+                    DropdownButton<SyncInterval>(
+                      value: settings.syncInterval,
+                      underline: const SizedBox.shrink(),
+                      dropdownColor: c.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      style: Theme.of(context).textTheme.bodyLarge!.copyWith(
+                        color: c.accent,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      onChanged: BackgroundSync.supported
+                          ? (v) {
+                              if (v != null) settings.setSyncInterval(v);
+                            }
+                          : null,
+                      items: [
+                        for (final interval in SyncInterval.values)
+                          DropdownMenuItem(
+                            value: interval,
+                            child: Text(interval.label),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  BackgroundSync.supported
+                      ? 'Fetches new articles while the app is closed, '
+                            'on Wi-Fi or mobile data when the battery is not '
+                            'low.'
+                      : 'Not available on this platform. Feeds refresh when '
+                            'the app opens and when you pull down in the '
+                            'inbox.',
+                  style: TextStyle(color: c.muted, fontSize: 13, height: 1.4),
+                ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  const _Section(this.title);
-
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 4),
-      child: Text(
-        title,
-        style: theme.textTheme.titleSmall?.copyWith(
-          color: theme.colorScheme.primary,
-        ),
-      ),
-    );
-  }
-}
-
-class _ColorSwatch extends StatelessWidget {
-  const _ColorSwatch({
-    required this.name,
-    required this.color,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String name;
-  final Color color;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: name,
-      child: Tooltip(
-        message: name,
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: selected ? scheme.onSurface : Colors.transparent,
-                width: 3,
-              ),
-            ),
-            child: selected
-                ? const Icon(Icons.check, color: Colors.white, size: 20)
-                : null,
-          ),
-        ),
       ),
     );
   }

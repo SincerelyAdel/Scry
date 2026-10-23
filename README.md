@@ -1,11 +1,14 @@
-# Snippefy
+# Scry
 
 A calm, offline-first RSS/Atom reader for Android and iOS, built with Flutter.
+It shares its look with its sibling app, RepoViewer: near-black and gold (or
+warm cream in light mode), serif headings, rounded cards and a soft gold glow
+around the screen edge.
 Subscribe to tech blogs and paper feeds, read everything in one inbox, and
 keep reading without a connection.
 
-> This repo used to hold a small PyQt tool for making VS Code snippets. It has
-> been rewritten from scratch as an RSS reader; the name stuck.
+> This repo used to hold Snippefy, a small PyQt tool for making VS Code
+> snippets. It was rewritten from scratch as this RSS reader and renamed.
 
 ## Features
 
@@ -24,8 +27,9 @@ keep reading without a connection.
   marks it read.
 - **Offline**: feeds, articles and read state live in SQLite, so cached
   articles are readable without a connection.
-- **Customization**: light, dark or system theme; 8 Material 3 accent colours;
-  article text size; default sort. All saved with `shared_preferences`.
+- **Customization**: dark (default), light or system theme, switchable from
+  the header; article text size; default sort. All saved with
+  `shared_preferences`.
 - **Background refresh** (Android): Workmanager refreshes feeds every 2 or 4
   hours (or never), only on a network and when the battery isn't low. Feeds
   also refresh when the app opens and when you pull down in the inbox.

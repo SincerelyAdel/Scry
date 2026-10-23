@@ -13,7 +13,7 @@ class AppDatabase {
 
   final Database _db;
 
-  static const _fileName = 'snippefy.db';
+  static const _fileName = 'scry.db';
   static const _version = 1;
 
   /// Opens (and creates or migrates) the database.

@@ -7,9 +7,12 @@ import 'services/background_sync.dart';
 import 'state/articles_provider.dart';
 import 'state/feeds_provider.dart';
 import 'state/settings_provider.dart';
+import 'theme.dart';
+import 'widgets/app_header.dart';
+import 'widgets/gold_glow_border.dart';
 
-class SnippefyApp extends StatefulWidget {
-  const SnippefyApp({
+class ScryApp extends StatefulWidget {
+  const ScryApp({
     super.key,
     required this.repository,
     required this.settings,
@@ -23,10 +26,10 @@ class SnippefyApp extends StatefulWidget {
   final bool refreshOnLaunch;
 
   @override
-  State<SnippefyApp> createState() => _SnippefyAppState();
+  State<ScryApp> createState() => _ScryAppState();
 }
 
-class _SnippefyAppState extends State<SnippefyApp> {
+class _ScryAppState extends State<ScryApp> {
   late final FeedsProvider _feeds;
   late final ArticlesProvider _articles;
   late var _sort = widget.settings.sort;
@@ -88,24 +91,31 @@ class _SnippefyAppState extends State<SnippefyApp> {
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) => MaterialApp(
-          title: 'Snippefy',
+          title: 'Scry',
           debugShowCheckedModeBanner: false,
           themeMode: settings.themeMode,
-          theme: _theme(settings.seedColor, Brightness.light),
-          darkTheme: _theme(settings.seedColor, Brightness.dark),
+          theme: buildAppTheme(lightPalette),
+          darkTheme: buildAppTheme(darkPalette),
+          themeAnimationDuration: Duration.zero,
+          navigatorKey: navigatorKey,
+          // The header and the gold edge stay fixed above every page.
+          builder: (context, child) => GoldGlowBorder(
+            child: Column(
+              children: [
+                const AppHeader(),
+                Expanded(
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeTop: true,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
+                ),
+              ],
+            ),
+          ),
           home: const HomeShell(),
         ),
       ),
-    );
-  }
-
-  static ThemeData _theme(Color seed, Brightness brightness) {
-    return ThemeData(
-      colorScheme: ColorScheme.fromSeed(
-        seedColor: seed,
-        brightness: brightness,
-      ),
-      visualDensity: VisualDensity.standard,
     );
   }
 }

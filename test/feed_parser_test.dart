@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:snippefy/services/feed_parser.dart';
+import 'package:scry/services/feed_parser.dart';
 
 import 'support/fixtures.dart';
 

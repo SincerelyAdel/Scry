@@ -7,7 +7,9 @@ import '../state/articles_provider.dart';
 import '../state/feeds_provider.dart';
 import '../state/settings_provider.dart';
 import '../widgets/add_feed_dialog.dart';
+import '../theme.dart';
 import '../widgets/article_tile.dart';
+import '../widgets/ui.dart';
 import 'article_detail_screen.dart';
 
 /// Every subscribed feed's articles in one list.
@@ -83,9 +85,10 @@ class InboxScreen extends StatelessWidget {
       return const Center(child: CircularProgressIndicator());
     }
     if (feeds.feeds.isEmpty) {
-      return _EmptyState(
+      return EmptyState(
         icon: Icons.rss_feed,
-        message: 'No feeds yet.\nAdd one to fill your inbox.',
+        title: 'No feeds yet',
+        message: 'Add a feed or a blog to fill your inbox.',
         action: FilledButton.icon(
           onPressed: () => showAddFeedDialog(context),
           icon: const Icon(Icons.add),
@@ -94,15 +97,15 @@ class InboxScreen extends StatelessWidget {
       );
     }
     if (articles.articles.isEmpty) {
-      return _EmptyState(
-        icon: Icons.inbox,
-        message: articles.unreadOnly
-            ? 'All caught up.'
-            : 'Nothing here yet. Pull down to refresh.',
+      return EmptyState(
+        icon: articles.unreadOnly ? Icons.done_all : Icons.inbox_outlined,
+        title: articles.unreadOnly ? 'All caught up' : 'Nothing here yet',
+        message: articles.unreadOnly ? null : 'Pull down to refresh.',
       );
     }
 
     final items = articles.articles;
+    final pad = pagePadding(context);
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.metrics.extentAfter < 800) articles.loadMore();
@@ -111,8 +114,9 @@ class InboxScreen extends StatelessWidget {
       child: ListView.separated(
         // Always scrollable so pull-to-refresh works on short lists.
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: EdgeInsets.fromLTRB(pad, 8, pad, 24),
         itemCount: items.length + (articles.hasMore ? 1 : 0),
-        separatorBuilder: (_, _) => const Divider(height: 1, indent: 32),
+        separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (context, index) {
           if (index >= items.length) {
             return const Padding(
@@ -153,21 +157,21 @@ class _SwipeableArticle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final c = context.palette;
     final articles = context.read<ArticlesProvider>();
     return Dismissible(
       key: ValueKey(article.id),
       background: _swipeBackground(
-        color: scheme.primaryContainer,
-        foreground: scheme.onPrimaryContainer,
+        color: c.button,
+        foreground: c.onButton,
         icon: article.isRead
             ? Icons.mark_email_unread_outlined
             : Icons.mark_email_read_outlined,
         alignment: Alignment.centerLeft,
       ),
       secondaryBackground: _swipeBackground(
-        color: scheme.errorContainer,
-        foreground: scheme.onErrorContainer,
+        color: c.danger,
+        foreground: Colors.white,
         icon: Icons.delete_outline,
         alignment: Alignment.centerRight,
       ),
@@ -210,53 +214,16 @@ class _SwipeableArticle extends StatelessWidget {
     required IconData icon,
     required Alignment alignment,
   }) {
-    return ColoredBox(
-      color: color,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(16),
+      ),
       child: Align(
         alignment: alignment,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Icon(icon, color: foreground),
-        ),
-      ),
-    );
-  }
-}
-
-class _EmptyState extends StatelessWidget {
-  const _EmptyState({required this.icon, required this.message, this.action});
-
-  final IconData icon;
-  final String message;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    // A scroll view so RefreshIndicator still works when empty.
-    return LayoutBuilder(
-      builder: (context, constraints) => SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: constraints.maxHeight),
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(icon, size: 64, color: theme.colorScheme.outline),
-                  const SizedBox(height: 16),
-                  Text(
-                    message,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyLarge,
-                  ),
-                  if (action != null) ...[const SizedBox(height: 24), action!],
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );
