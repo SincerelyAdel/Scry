@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../widgets/swipe_back.dart';
 import '../data/feed_repository.dart';
 import '../models/article.dart';
 import '../models/paper_figure.dart';
@@ -222,128 +223,130 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
         ],
       ),
       body: SelectionArea(
-        child: ListView(
-          padding: EdgeInsets.fromLTRB(
-            pagePadding(context) + 4,
-            8,
-            pagePadding(context) + 4,
-            40,
-          ),
-          children: [
-            if (_article.feedTitle != null)
-              Row(
-                children: [
-                  Icon(Icons.rss_feed, size: 15, color: c.accent),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      _article.feedTitle!.toUpperCase(),
-                      style: TextStyle(
-                        color: c.accent,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.9,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            const SizedBox(height: 12),
-            Text(
-              _article.title,
-              style: TextStyle(
-                fontFamily: kSerif,
-                color: c.text,
-                fontSize: 28,
-                height: 1.25,
-                fontWeight: FontWeight.w500,
-              ),
+        child: SwipeBackArea(
+          child: ListView(
+            padding: EdgeInsets.fromLTRB(
+              pagePadding(context) + 4,
+              8,
+              pagePadding(context) + 4,
+              40,
             ),
-            const SizedBox(height: 12),
-            Text(
-              [
-                if (_article.author != null) 'By ${_article.author}',
-                fullDate(_article.displayDate),
-              ].join(' · '),
-              style: TextStyle(color: c.muted, fontSize: 14),
-            ),
-            if (!_loading) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: articleTags(
-                  context,
-                  tags: _article.tags,
-                  paper: _paperId != null,
-                  readMinutes: _article.readMinutes,
-                  linkOnly:
-                      hasLink &&
-                      _paperId == null &&
-                      _html == null &&
-                      !_fetchingFull,
-                ),
-              ),
-            ],
-            const SizedBox(height: 20),
-            Divider(color: c.border),
-            const SizedBox(height: 20),
-            if (_loading)
-              const Center(child: CircularProgressIndicator())
-            else if (_paperId != null)
-              ..._paper(c, fontSize)
-            else ...[
-              ..._leadImage(),
-              if (_fetchingFull) ...[
+            children: [
+              if (_article.feedTitle != null)
                 Row(
                   children: [
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Fetching the full article...',
-                      style: TextStyle(
-                        fontFamily: kSerif,
-                        fontStyle: FontStyle.italic,
-                        color: c.muted,
-                        fontSize: fontSize * 0.9,
+                    Icon(Icons.rss_feed, size: 15, color: c.accent),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        _article.feedTitle!.toUpperCase(),
+                        style: TextStyle(
+                          color: c.accent,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.9,
+                        ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 20),
-              ],
-              if (_html == null && !_fetchingFull)
-                Text(
-                  'This feed only provides a link for this article.',
-                  style: TextStyle(
-                    fontFamily: kSerif,
-                    fontStyle: FontStyle.italic,
-                    color: c.muted,
-                    fontSize: fontSize,
-                  ),
-                )
-              else if (_html != null)
-                HtmlView(
-                  html: _html!,
-                  baseUrl: _article.url,
-                  fontSize: fontSize,
-                ),
-            ],
-            if (hasLink) ...[
-              const SizedBox(height: 36),
-              Center(
-                child: FilledButton.icon(
-                  onPressed: _openInBrowser,
-                  icon: const Icon(Icons.open_in_browser),
-                  label: const Text('Open in browser'),
+              const SizedBox(height: 12),
+              Text(
+                _article.title,
+                style: TextStyle(
+                  fontFamily: kSerif,
+                  color: c.text,
+                  fontSize: 28,
+                  height: 1.25,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
+              const SizedBox(height: 12),
+              Text(
+                [
+                  if (_article.author != null) 'By ${_article.author}',
+                  fullDate(_article.displayDate),
+                ].join(' · '),
+                style: TextStyle(color: c.muted, fontSize: 14),
+              ),
+              if (!_loading) ...[
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: articleTags(
+                    context,
+                    tags: _article.tags,
+                    paper: _paperId != null,
+                    readMinutes: _article.readMinutes,
+                    linkOnly:
+                        hasLink &&
+                        _paperId == null &&
+                        _html == null &&
+                        !_fetchingFull,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 20),
+              Divider(color: c.border),
+              const SizedBox(height: 20),
+              if (_loading)
+                const Center(child: CircularProgressIndicator())
+              else if (_paperId != null)
+                ..._paper(c, fontSize)
+              else ...[
+                ..._leadImage(),
+                if (_fetchingFull) ...[
+                  Row(
+                    children: [
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        'Fetching the full article...',
+                        style: TextStyle(
+                          fontFamily: kSerif,
+                          fontStyle: FontStyle.italic,
+                          color: c.muted,
+                          fontSize: fontSize * 0.9,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                ],
+                if (_html == null && !_fetchingFull)
+                  Text(
+                    'This feed only provides a link for this article.',
+                    style: TextStyle(
+                      fontFamily: kSerif,
+                      fontStyle: FontStyle.italic,
+                      color: c.muted,
+                      fontSize: fontSize,
+                    ),
+                  )
+                else if (_html != null)
+                  HtmlView(
+                    html: _html!,
+                    baseUrl: _article.url,
+                    fontSize: fontSize,
+                  ),
+              ],
+              if (hasLink) ...[
+                const SizedBox(height: 36),
+                Center(
+                  child: FilledButton.icon(
+                    onPressed: _openInBrowser,
+                    icon: const Icon(Icons.open_in_browser),
+                    label: const Text('Open in browser'),
+                  ),
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

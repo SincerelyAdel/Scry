@@ -11,6 +11,7 @@ import '../state/settings_provider.dart';
 import '../widgets/add_feed_dialog.dart';
 import '../theme.dart';
 import '../widgets/article_tile.dart';
+import '../widgets/swipe_back.dart';
 import '../widgets/ui.dart';
 import 'article_detail_screen.dart';
 
@@ -196,9 +197,7 @@ class _SwipeableArticle extends StatelessWidget {
         article: article,
         index: index,
         onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ArticleDetailScreen(article: article),
-          ),
+          SwipeBackRoute(builder: (_) => ArticleDetailScreen(article: article)),
         ),
       ),
     );

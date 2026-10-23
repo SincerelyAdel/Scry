@@ -15,6 +15,12 @@ enum SyncInterval {
   final Duration? duration;
 }
 
+/// The app's two sides, switched from the header.
+enum AppMode { feeds, novels }
+
+/// Novel text: serif or sans.
+enum NovelFont { serif, sans }
+
 /// User preferences, persisted with shared_preferences.
 class SettingsProvider extends ChangeNotifier {
   SettingsProvider(this._prefs)
@@ -37,6 +43,20 @@ class SettingsProvider extends ChangeNotifier {
         SyncInterval.values,
         _prefs.getString(_kSyncInterval),
         SyncInterval.every4Hours,
+      ),
+      _mode = _enumOr(AppMode.values, _prefs.getString(_kMode), AppMode.feeds),
+      _novelFontSize = (_prefs.getDouble(_kNovelFontSize) ?? 20.0).clamp(
+        minNovelFontSize,
+        maxNovelFontSize,
+      ),
+      _novelLineHeight = (_prefs.getDouble(_kNovelLineHeight) ?? 1.7).clamp(
+        1.3,
+        2.2,
+      ),
+      _novelFont = _enumOr(
+        NovelFont.values,
+        _prefs.getString(_kNovelFont),
+        NovelFont.serif,
       );
 
   final SharedPreferences _prefs;
@@ -45,6 +65,13 @@ class SettingsProvider extends ChangeNotifier {
   static const _kFontSize = 'articleFontSize';
   static const _kSort = 'articleSort';
   static const _kSyncInterval = 'syncInterval';
+  static const _kMode = 'appMode';
+  static const _kNovelFontSize = 'novelFontSize';
+  static const _kNovelLineHeight = 'novelLineHeight';
+  static const _kNovelFont = 'novelFont';
+
+  static const minNovelFontSize = 14.0;
+  static const maxNovelFontSize = 32.0;
 
   static const minFontSize = 13.0;
   static const maxFontSize = 26.0;
@@ -54,6 +81,47 @@ class SettingsProvider extends ChangeNotifier {
   double _fontSize;
   ArticleSort _sort;
   SyncInterval _syncInterval;
+  AppMode _mode;
+  double _novelFontSize;
+  double _novelLineHeight;
+  NovelFont _novelFont;
+
+  /// Feeds or novels.
+  AppMode get mode => _mode;
+
+  /// The novel reader's text.
+  double get novelFontSize => _novelFontSize;
+  double get novelLineHeight => _novelLineHeight;
+  NovelFont get novelFont => _novelFont;
+
+  Future<void> setMode(AppMode mode) async {
+    if (mode == _mode) return;
+    _mode = mode;
+    notifyListeners();
+    await _prefs.setString(_kMode, mode.name);
+  }
+
+  Future<void> setNovelFontSize(double size) async {
+    final clamped = size.clamp(minNovelFontSize, maxNovelFontSize);
+    if (clamped == _novelFontSize) return;
+    _novelFontSize = clamped;
+    notifyListeners();
+    await _prefs.setDouble(_kNovelFontSize, clamped);
+  }
+
+  Future<void> setNovelLineHeight(double height) async {
+    if (height == _novelLineHeight) return;
+    _novelLineHeight = height;
+    notifyListeners();
+    await _prefs.setDouble(_kNovelLineHeight, height);
+  }
+
+  Future<void> setNovelFont(NovelFont font) async {
+    if (font == _novelFont) return;
+    _novelFont = font;
+    notifyListeners();
+    await _prefs.setString(_kNovelFont, font.name);
+  }
 
   ThemeMode get themeMode => _themeMode;
 

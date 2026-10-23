@@ -9,7 +9,8 @@ import '../theme.dart';
 final navigatorKey = GlobalKey<NavigatorState>();
 
 /// The Scry bar fixed at the top of every page: the app name (tap it
-/// to go back to the start), a light/dark toggle and Settings. It sits above
+/// to go back to the start), the Feeds / Novels switch, a light/dark toggle
+/// and Settings. It sits above
 /// the navigator, so it never scrolls away or slides out with a page.
 class AppHeader extends StatefulWidget {
   const AppHeader({super.key});
@@ -83,6 +84,8 @@ class _AppHeaderState extends State<AppHeader> {
                   ),
                 ),
               ),
+              const SizedBox(width: 12),
+              const _ModeSwitch(),
               const Spacer(),
               button(
                 c.isDark ? Icons.light_mode_outlined : Icons.dark_mode_outlined,
@@ -95,6 +98,72 @@ class _AppHeaderState extends State<AppHeader> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Feeds or Novels: two pills, the chosen one filled. Switching closes any
+/// open pages first.
+class _ModeSwitch extends StatelessWidget {
+  const _ModeSwitch();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final mode = context.select<SettingsProvider, AppMode>((s) => s.mode);
+
+    Widget pill(AppMode value, IconData icon, String label) {
+      final selected = mode == value;
+      return Semantics(
+        button: true,
+        selected: selected,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            if (selected) return;
+            navigatorKey.currentState?.popUntil((r) => r.isFirst);
+            context.read<SettingsProvider>().setMode(value);
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: selected ? c.button : Colors.transparent,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 16, color: selected ? c.onButton : c.muted),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: selected ? c.onButton : c.muted,
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(19),
+        border: Border.all(color: c.border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          pill(AppMode.feeds, Icons.rss_feed, 'Feeds'),
+          pill(AppMode.novels, Icons.auto_stories_outlined, 'Novels'),
+        ],
       ),
     );
   }

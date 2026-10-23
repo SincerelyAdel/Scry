@@ -5,10 +5,13 @@ import 'package:provider/provider.dart';
 import '../models/feed.dart';
 import '../state/articles_provider.dart';
 import '../state/feeds_provider.dart';
+import '../state/settings_provider.dart';
 import 'feeds_screen.dart';
 import 'inbox_screen.dart';
+import 'novels/library_screen.dart';
 
-/// Bottom navigation between the inbox and feed management. Settings live
+/// The feeds side (bottom navigation between the inbox and feed
+/// management) or the novel library, as chosen in the header. Settings live
 /// in the header.
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -50,6 +53,8 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final mode = context.select<SettingsProvider, AppMode>((s) => s.mode);
+    if (mode == AppMode.novels) return const LibraryScreen();
     final unread = context.select<ArticlesProvider, int>((a) => a.unreadCount);
     return Scaffold(
       body: IndexedStack(

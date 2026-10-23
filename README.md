@@ -5,7 +5,8 @@ It shares its look with its sibling app, RepoViewer: near-black and gold (or
 warm cream in light mode), serif headings, rounded cards and a soft gold glow
 around the screen edge.
 Subscribe to tech blogs and paper feeds, read everything in one inbox, and
-keep reading without a connection.
+keep reading without a connection. A second side, **Novels**, reads web
+novels from ranobes.net and remembers your place.
 
 The name comes from scrying: looking into a crystal ball to see what's coming.
 The icon is that ball, painted in gold and purple brush strokes.
@@ -43,8 +44,11 @@ The icon is that ball, painted in gold and purple brush strokes.
   shows every feed with articles that have it, counting only those.
 - **Stars**: tap the star on a card or in the reader to keep an article for
   later; **Starred** lists them. Reading an article doesn't unstar it.
-- **Gestures**: swipe right to toggle read, swipe left to delete (with undo).
-  Deleted articles don't come back on the next refresh.
+- **Gestures**: in the inbox, swipe right to toggle read, swipe left to
+  delete (with undo). Deleted articles don't come back on the next refresh.
+  In an article (or a novel chapter), swipe right anywhere to close it: the
+  page follows your finger and closes past a third of the screen or on a
+  quick flick.
 - **Sample images**: every inbox card shows a picture when the article has
   one: from the feed (Media RSS, image enclosures or the first image in the
   post), else the article page's preview image (`og:image`), else for arXiv
@@ -75,6 +79,31 @@ The icon is that ball, painted in gold and purple brush strokes.
 - **Background refresh** (Android): Workmanager refreshes feeds every 2 or 4
   hours (or never), only on a network and when the battery isn't low. Feeds
   also refresh when the app opens and when you pull down in the inbox.
+
+## Novels
+
+The **Feeds | Novels** switch in the top bar flips the whole app between
+the two sides; the choice is remembered.
+
+- **Library**: your novels, most recently read first, each with its cover,
+  the chapter you're on, how many are left, and a **new** badge for
+  chapters released since you last read. Opening the library (at most every
+  half hour) or pulling down checks for new chapters.
+- **Adding**: search ranobes.net by name, or paste a link to a novel, one of
+  its chapters or its chapter list.
+- **Novel page**: details and every chapter, oldest first, loaded from the
+  site 25 at a time as they scroll into view. **Show in list** jumps to the
+  chapter you're on; the 123 button goes to any chapter number.
+- **Reader**: the chapter's text only (the ads the site puts inside it are
+  removed), with its own text size, line spacing and serif or sans font
+  (the Aa button). It keeps the screen on, remembers how far down the
+  chapter you are, saves the next chapter ahead of time, and keeps the last
+  60 chapters of each novel for offline reading. **Next chapter** at the end;
+  at the latest chapter, **Check again** looks for a new one.
+
+Parsing lives in `lib/services/ranobes.dart` (search results, the novel
+page, the chapter list's embedded JSON, chapter text); the site's markup is
+what it reads, so a redesign there would need changes here.
 
 ## Getting started
 
@@ -125,17 +154,21 @@ macOS already has it). CI runs format, analyze and tests on every push.
 lib/
   main.dart                 opens prefs + DB, schedules background sync
   app.dart                  Provider wiring, Material 3 themes
-  models/                   Feed, Article, ArticleSort, Topic (tags)
+  models/                   Feed, Article, ArticleSort, Topic (tags), Novel
   data/
     app_database.dart       sqflite schema and every SQL query
     feed_repository.dart    fetch → parse → store; used by the UI and the worker
+    novel_repository.dart   novels: search, add, chapters (saved), progress
   services/
     feed_fetcher.dart       Dio HTTP (interface, so tests use a fake)
     feed_parser.dart        RSS/Atom/RDF → ParsedFeed, plus feed discovery in HTML
     background_sync.dart    Workmanager dispatcher and scheduling
+    ranobes.dart            reading ranobes.net pages
   state/                    ChangeNotifiers: settings, feeds, articles (inbox),
-                            article images (background picture lookups)
+                            article images (background picture lookups),
+                            novels (the library)
   screens/                  home shell, inbox, article detail, feeds, settings
+    novels/                 library, add novel, novel page, chapter reader
   widgets/                  article tile, add-feed dialog, HTML renderer,
                             cached images with a zoomable viewer
   utils/                    date parsing, HTML → text, date formatting,
@@ -182,6 +215,19 @@ tool/
 | | | fullContent | text? (HTML from the web page) |
 | | | tags | text? (from its own words, e.g. `ic,claude`) |
 | | | starred | 0/1 |
+
+| novels | | chapters (saved for offline) | |
+|---|---|---|---|
+| id | int PK | url | text PK |
+| url | text (its page) | novelId | int FK → novels, cascade |
+| bookId | int, unique (site's number) | title | text |
+| title, cover, author, status, description | text? | novelTitle | text? |
+| chapterCount | int | body | text (paragraphs, blank-line separated) |
+| addedDate, lastChecked, readAt | epoch ms | prevUrl, nextUrl | text? |
+| chapterUrl, chapterTitle | text? (where you are) | fetchedAt | epoch ms |
+| chapterNumber | int (from 1; 0 unknown) | | |
+| chapterProgress | real 0–1 (how far down) | | |
+| seenCount | int (chapters when last read) | | |
 
 ### Package notes
 

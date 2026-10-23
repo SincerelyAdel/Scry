@@ -255,7 +255,7 @@ void main() {
       expect(await repo.tagFeedCounts(Topic.claude), {feed.id: 0});
     });
 
-    test('upgrading to version 5 marks everything unread again', () async {
+    test('upgrading from version 4 marks everything unread again', () async {
       final dir = await Directory.systemTemp.createTemp('scry_v5');
       addTearDown(() => dir.delete(recursive: true));
       final path = '${dir.path}/scry.db';
@@ -273,6 +273,8 @@ void main() {
       // Turn it back into a version 4 database.
       final raw = await databaseFactoryFfiNoIsolate.openDatabase(path);
       await raw.execute('ALTER TABLE articles DROP COLUMN starred');
+      await raw.execute('DROP TABLE chapters');
+      await raw.execute('DROP TABLE novels');
       await raw.setVersion(4);
       await raw.close();
 

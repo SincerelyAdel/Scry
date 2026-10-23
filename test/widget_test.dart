@@ -4,10 +4,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scry/app.dart';
 import 'package:scry/data/app_database.dart';
 import 'package:scry/data/feed_repository.dart';
+import 'package:scry/data/novel_repository.dart';
 import 'package:scry/state/settings_provider.dart';
 
 import 'support/fakes.dart';
 import 'support/fixtures.dart';
+import 'support/ranobes_fixtures.dart';
 
 void main() {
   late AppDatabase db;
@@ -34,6 +36,7 @@ void main() {
       ScryApp(
         repository: repo,
         settings: SettingsProvider(prefs),
+        novels: NovelRepository(db, fetcher),
         refreshOnLaunch: false,
       ),
     );
@@ -158,7 +161,12 @@ void main() {
     await seedFeeds(tester);
     await pumpApp(tester);
 
-    await tester.tap(find.text('Feeds'));
+    await tester.tap(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Feeds'),
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.text('Atom Example'), findsOneWidget);
     expect(find.text('Example & Co Blog'), findsOneWidget);
@@ -194,6 +202,117 @@ void main() {
     expect(find.text('Second post'), findsOneWidget);
     expect(find.text('First post'), findsNothing);
     expect(find.text('Mark all read'), findsNothing);
+  });
+
+  testWidgets('swiping right closes an article', (tester) async {
+    await seedFeeds(tester);
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Second post'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open in browser'), findsOneWidget);
+
+    await tester.fling(
+      find.textContaining('Full body here.'),
+      const Offset(400, 0),
+      1500,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Open in browser'), findsNothing);
+    expect(find.text('First post'), findsOneWidget);
+  });
+
+  testWidgets('a quick swipe over the text closes the article too', (
+    tester,
+  ) async {
+    await seedFeeds(tester);
+    await pumpApp(tester);
+    await tester.tap(find.text('Second post'));
+    await tester.pumpAndSettle();
+
+    // One big step, as a fast swipe arrives: text selection, which also
+    // follows sideways drags, must not take it.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.textContaining('Full body here.')),
+    );
+    await gesture.moveBy(const Offset(400, 0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.text('Open in browser'), findsNothing);
+  });
+
+  testWidgets('a short sideways drag leaves the article open', (tester) async {
+    await seedFeeds(tester);
+    await pumpApp(tester);
+    await tester.tap(find.text('Second post'));
+    await tester.pumpAndSettle();
+
+    await tester.timedDrag(
+      find.textContaining('Full body here.'),
+      const Offset(80, 0),
+      const Duration(milliseconds: 600),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Open in browser'), findsOneWidget);
+  });
+
+  testWidgets('novels: switch sides, continue reading, next chapter', (
+    tester,
+  ) async {
+    final novels = NovelRepository(db, fetcher);
+    await tester.runAsync(() async {
+      String page(String title, {String? prev, String? next}) => chapterPage(
+        title: title,
+        paragraphs: ['$title text, long enough to read.'],
+        prev: prev,
+        next: next,
+      );
+      fetcher.responses
+        ..[novelUrl] = novelPage
+        ..[chapterListUrl] = chapterListPage(count: 3)
+        ..[chapter2Url] = page(
+          'Chapter 2',
+          prev: chapter1Url,
+          next: chapter3Url,
+        )
+        ..[chapter3Url] = page(
+          'Chapter 3',
+          prev: chapter2Url,
+          next: 'https://ranobes.net/shadow-slave-v741610-1205249/4001.html',
+        );
+      final novel = await novels.addNovel(novelUrl);
+      final second = await novels.chapter(novel, chapter2Url);
+      await novels.chapter(novel, chapter3Url);
+      await novels.saveProgress(novel, chapter: second, number: 2, progress: 0);
+      // Nothing else is fetched while the test runs.
+      fetcher.responses.clear();
+    });
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Novels'));
+    await tester.pumpAndSettle();
+    expect(find.text('Shadow Slave'), findsOneWidget);
+    expect(find.text('2 of 3  ·  1 to go'), findsOneWidget);
+
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chapter 2 text, long enough to read.'), findsOneWidget);
+
+    await tester.ensureVisible(find.text('Next chapter'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Next chapter'));
+    await tester.pumpAndSettle();
+    expect(find.text('Chapter 3 text, long enough to read.'), findsOneWidget);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+    expect(find.text('All 3 read'), findsOneWidget);
+    expect(prefs.getString('appMode'), 'novels');
+
+    // And back to the feeds.
+    await tester.tap(find.text('Feeds'));
+    await tester.pumpAndSettle();
+    expect(find.text('Inbox'), findsWidgets);
   });
 
   testWidgets('starts dark; theme choice persists', (tester) async {

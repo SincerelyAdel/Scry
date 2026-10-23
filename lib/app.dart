@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'data/feed_repository.dart';
+import 'data/novel_repository.dart';
 import 'screens/home_shell.dart';
 import 'services/background_sync.dart';
 import 'state/article_images.dart';
 import 'state/articles_provider.dart';
 import 'state/feeds_provider.dart';
+import 'state/novels_provider.dart';
 import 'state/settings_provider.dart';
 import 'theme.dart';
 import 'widgets/app_header.dart';
@@ -17,10 +19,12 @@ class ScryApp extends StatefulWidget {
     super.key,
     required this.repository,
     required this.settings,
+    required this.novels,
     this.refreshOnLaunch = true,
   });
 
   final FeedRepository repository;
+  final NovelRepository novels;
   final SettingsProvider settings;
 
   /// Fetch all feeds when the app starts. Off in widget tests.
@@ -34,6 +38,7 @@ class _ScryAppState extends State<ScryApp> {
   late final FeedsProvider _feeds;
   late final ArticlesProvider _articles;
   late final ArticleImages _images;
+  late final NovelsProvider _novels;
   late var _sort = widget.settings.sort;
   late var _syncInterval = widget.settings.syncInterval;
 
@@ -43,6 +48,7 @@ class _ScryAppState extends State<ScryApp> {
     _feeds = FeedsProvider(widget.repository);
     _articles = ArticlesProvider(widget.repository, initialSort: _sort);
     _images = ArticleImages(widget.repository);
+    _novels = NovelsProvider(widget.novels)..load();
 
     // The two lists depend on each other: new or deleted articles change
     // feed counts, and feed changes change the inbox.
@@ -81,6 +87,7 @@ class _ScryAppState extends State<ScryApp> {
     _feeds.dispose();
     _articles.dispose();
     _images.dispose();
+    _novels.dispose();
     super.dispose();
   }
 
@@ -93,6 +100,7 @@ class _ScryAppState extends State<ScryApp> {
         ChangeNotifierProvider.value(value: _feeds),
         ChangeNotifierProvider.value(value: _articles),
         ChangeNotifierProvider.value(value: _images),
+        ChangeNotifierProvider.value(value: _novels),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) => MaterialApp(

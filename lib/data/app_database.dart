@@ -4,11 +4,13 @@ import 'package:sqflite/sqflite.dart';
 import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
+import '../models/novel.dart';
 import '../models/paper_figure.dart';
 import '../models/topic.dart';
 import '../utils/arxiv.dart';
 import '../utils/html_text.dart';
 import '../utils/images.dart';
+import '../services/ranobes.dart';
 import '../utils/readable.dart';
 
 /// Thin wrapper over the SQLite database holding feeds and articles.
@@ -20,7 +22,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 5;
+  static const _version = 7;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -86,6 +88,51 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_articles_date ON articles(isDeleted, pubDate)',
     );
+    await _createNovelTables(db);
+  }
+
+  /// Added in version 7: the chapter count when the novel was last read,
+  /// so the library can say how many came out since.
+  static const _seenColumn = 'seenCount INTEGER NOT NULL DEFAULT 0';
+
+  /// Added in version 6: novels from ranobes.net with the reader's place in
+  /// each, and the chapters read or about to be read, kept for offline.
+  static Future<void> _createNovelTables(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE novels (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        url TEXT NOT NULL,
+        bookId INTEGER NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        cover TEXT,
+        author TEXT,
+        status TEXT,
+        description TEXT,
+        chapterCount INTEGER NOT NULL DEFAULT 0,
+        addedDate INTEGER NOT NULL,
+        lastChecked INTEGER,
+        chapterUrl TEXT,
+        chapterTitle TEXT,
+        chapterNumber INTEGER NOT NULL DEFAULT 0,
+        chapterProgress REAL NOT NULL DEFAULT 0,
+        readAt INTEGER,
+        $_seenColumn
+      )
+    ''');
+    // body is the chapter's paragraphs separated by blank lines.
+    await db.execute('''
+      CREATE TABLE chapters (
+        url TEXT PRIMARY KEY,
+        novelId INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
+        title TEXT NOT NULL,
+        novelTitle TEXT,
+        body TEXT NOT NULL,
+        prevUrl TEXT,
+        nextUrl TEXT,
+        fetchedAt INTEGER NOT NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_chapters_novel ON chapters(novelId)');
   }
 
   /// Added in version 2: a picture per article, and arXiv figures.
@@ -127,6 +174,11 @@ class AppDatabase {
       // Version 4 had a Mark all read button that was easy to hit by
       // mistake; this version removes it and gives every article back.
       await db.execute('UPDATE articles SET isRead = 0');
+    }
+    if (from < 6) {
+      await _createNovelTables(db);
+    } else if (from < 7) {
+      await db.execute('ALTER TABLE novels ADD COLUMN $_seenColumn');
     }
   }
 
@@ -514,5 +566,100 @@ class AppDatabase {
       where: 'id = ?',
       whereArgs: [articleId],
     );
+  }
+
+  // --------------------------------------------------------------- novels
+
+  /// The library, most recently read first.
+  Future<List<Novel>> listNovels() async {
+    final rows = await _db.query(
+      'novels',
+      orderBy: 'COALESCE(readAt, addedDate) DESC',
+    );
+    return rows.map(Novel.fromMap).toList();
+  }
+
+  Future<Novel?> getNovel(int id) async {
+    final rows = await _db.query('novels', where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? null : Novel.fromMap(rows.first);
+  }
+
+  Future<Novel?> findNovelByBookId(int bookId) async {
+    final rows = await _db.query(
+      'novels',
+      where: 'bookId = ?',
+      whereArgs: [bookId],
+    );
+    return rows.isEmpty ? null : Novel.fromMap(rows.first);
+  }
+
+  Future<int> insertNovel(Novel novel) => _db.insert('novels', novel.toMap());
+
+  Future<void> updateNovel(Novel novel) async {
+    await _db.update(
+      'novels',
+      novel.toMap(),
+      where: 'id = ?',
+      whereArgs: [novel.id],
+    );
+  }
+
+  /// Removes the novel and, via the cascade, its saved chapters.
+  Future<void> deleteNovel(int id) async {
+    await _db.delete('novels', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<ChapterText?> getChapter(String url) async {
+    final rows = await _db.query(
+      'chapters',
+      where: 'url = ?',
+      whereArgs: [url],
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.first;
+    return ChapterText(
+      url: url,
+      title: row['title'] as String,
+      novelTitle: row['novelTitle'] as String?,
+      paragraphs: (row['body'] as String).split('\n\n'),
+      prevUrl: row['prevUrl'] as String?,
+      nextUrl: row['nextUrl'] as String?,
+    );
+  }
+
+  /// Keeps a chapter for offline reading. Each novel keeps its
+  /// [keepPerNovel] most recently fetched chapters.
+  Future<void> saveChapter(
+    int novelId,
+    ChapterText chapter, {
+    int keepPerNovel = 60,
+  }) async {
+    await _db.insert('chapters', {
+      'url': chapter.url,
+      'novelId': novelId,
+      'title': chapter.title,
+      'novelTitle': chapter.novelTitle,
+      'body': chapter.paragraphs.join('\n\n'),
+      'prevUrl': chapter.prevUrl,
+      'nextUrl': chapter.nextUrl,
+      'fetchedAt': DateTime.now().millisecondsSinceEpoch,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    await _db.rawDelete(
+      '''
+      DELETE FROM chapters WHERE novelId = ? AND url NOT IN (
+        SELECT url FROM chapters WHERE novelId = ?
+        ORDER BY fetchedAt DESC LIMIT ?
+      )
+    ''',
+      [novelId, novelId, keepPerNovel],
+    );
+  }
+
+  Future<int> chapterCountSaved(int novelId) async {
+    final rows = await _db.rawQuery(
+      'SELECT COUNT(*) AS n FROM chapters WHERE novelId = ?',
+      [novelId],
+    );
+    return rows.first['n'] as int;
   }
 }

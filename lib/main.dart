@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app.dart';
 import 'data/app_database.dart';
 import 'data/feed_repository.dart';
+import 'data/novel_repository.dart';
 import 'services/background_sync.dart';
 import 'services/feed_fetcher.dart';
 import 'state/settings_provider.dart';
@@ -20,10 +21,12 @@ Future<void> main() async {
   final prefs = await SharedPreferences.getInstance();
   final settings = SettingsProvider(prefs);
   final db = await AppDatabase.open();
-  final repository = FeedRepository(db, DioFeedFetcher());
+  final fetcher = DioFeedFetcher();
+  final repository = FeedRepository(db, fetcher);
+  final novels = NovelRepository(db, fetcher);
 
   await BackgroundSync.initialize();
   unawaited(BackgroundSync.apply(settings.syncInterval));
 
-  runApp(ScryApp(repository: repository, settings: settings));
+  runApp(ScryApp(repository: repository, settings: settings, novels: novels));
 }
