@@ -89,24 +89,56 @@ void main() {
     });
   });
 
-  group('topics', () {
-    test('are guessed from arXiv categories', () {
-      expect(guessTopic('https://rss.arxiv.org/rss/cs.AR', 'cs.AR'), Topic.ic);
-      expect(guessTopic('https://rss.arxiv.org/rss/cs.LG', 'cs.LG'), Topic.ml);
-      expect(guessTopic('https://rss.arxiv.org/rss/math.CO', 'x'), isNull);
+  group('tags', () {
+    test('feeds are guessed from arXiv categories', () {
+      expect(guessTopics('https://rss.arxiv.org/rss/cs.AR', 'cs.AR'), {
+        Topic.ic,
+      });
+      expect(guessTopics('https://rss.arxiv.org/rss/cs.LG', 'cs.LG'), {
+        Topic.ml,
+      });
+      expect(guessTopics('https://rss.arxiv.org/rss/cs.LG+cs.AR', 'x'), {
+        Topic.ml,
+        Topic.ic,
+      });
+      expect(guessTopics('https://rss.arxiv.org/rss/math.CO', 'x'), isEmpty);
     });
 
-    test('are guessed from names', () {
-      expect(guessTopic('https://semiengineering.com/feed/', 'Semi'), Topic.ic);
-      expect(
-        guessTopic('https://chipsandcheese.com/feed/', 'Chips and Cheese'),
+    test('feeds are guessed from names', () {
+      expect(guessTopics('https://semiengineering.com/feed/', 'Semi'), {
         Topic.ic,
-      );
-      expect(
-        guessTopic('https://huggingface.co/blog/feed.xml', 'Hugging Face'),
+      });
+      expect(guessTopics('https://huggingface.co/blog/feed.xml', 'HF'), {
         Topic.ml,
-      );
-      expect(guessTopic('https://cooking.example/feed', 'Recipes'), isNull);
+      });
+      expect(guessTopics('https://www.anthropic.com/news/rss', 'News'), {
+        Topic.claude,
+      });
+      expect(guessTopics('https://cooking.example/feed', 'Recipes'), isEmpty);
+    });
+
+    test('articles earn tags from their title or repeated words', () {
+      expect(tagsInText('Does Your Model Run on AWS Trainium?', ''), {
+        Topic.ic,
+      });
+      expect(tagsInText('Cut EDA license cost with Stratos AI', ''), {
+        Topic.ml,
+        Topic.ic,
+      });
+      expect(tagsInText('Building agents with Claude', ''), {Topic.claude});
+      // One passing mention in the text isn't enough.
+      expect(tagsInText('A post', 'We trained it on a GPU.'), isEmpty);
+      expect(tagsInText('A post', 'GPU GPU HBM wafer and more GPUs'), {
+        Topic.ic,
+      });
+      // Names aren't chips.
+      expect(tagsInText('Notes from Chip Huyen', ''), isEmpty);
+    });
+
+    test('tag lists round-trip in a fixed order', () {
+      expect(topicsToString({Topic.claude, Topic.ml}), 'ml,claude');
+      expect(topicsFromString('claude,ml,nope'), {Topic.ml, Topic.claude});
+      expect(topicsToString({}), isNull);
     });
   });
 
@@ -162,24 +194,50 @@ void main() {
 
     tearDown(() => db.close());
 
-    test('new feeds get a topic, and articles show it', () async {
+    test('new feeds get tags, and their articles carry them', () async {
       final added = await repo.addFeed(feedUrl);
-      expect(added.topic, Topic.ic);
+      expect(added.topics, {Topic.ic});
       final article = (await repo.listArticles()).single;
-      expect(article.feedTopic, Topic.ic);
+      expect(article.tags, [Topic.ic]);
       expect(await repo.listArticles(topic: Topic.ml), isEmpty);
       expect(await repo.listArticles(topic: Topic.ic), hasLength(1));
 
-      await repo.setFeedTopic(added.id!, Topic.ml);
-      expect(
-        (await repo.listArticles(topic: Topic.ml)).single.feedTopic,
+      await repo.setFeedTopics(added.id!, {Topic.ml, Topic.ic});
+      expect((await repo.listArticles(topic: Topic.ml)).single.tags, [
         Topic.ml,
-      );
+        Topic.ic,
+      ]);
     });
 
-    test('a chosen topic beats the guess', () async {
-      final added = await repo.addFeed(feedUrl, topic: Topic.ml);
-      expect(added.topic, Topic.ml);
+    test('chosen tags beat the guess', () async {
+      final added = await repo.addFeed(feedUrl, topics: {Topic.ml});
+      expect(added.topics, {Topic.ml});
+    });
+
+    test("an article's own words add tags and filter", () async {
+      const tagged = '''<?xml version="1.0"?>
+<rss version="2.0"><channel>
+  <title>Semi Blog</title><link>https://blog.example.com/</link>
+  <item><title>Running Claude on custom silicon</title>
+    <link>https://blog.example.com/posts/2</link></item>
+  <item><title>Teaser</title><link>https://blog.example.com/posts/1</link>
+    <description>Only the first line.</description></item>
+</channel></rss>''';
+      fetcher.responses[feedUrl] = tagged;
+      await repo.addFeed(feedUrl);
+      final claude = await repo.listArticles(topic: Topic.claude);
+      expect(claude.single.title, 'Running Claude on custom silicon');
+      expect(claude.single.tags, [Topic.ic, Topic.claude]);
+    });
+
+    test('mark all read follows the filter and can be undone', () async {
+      await repo.addFeed(feedUrl);
+      expect(await repo.markAllRead(topic: Topic.ml), isEmpty);
+      final ids = await repo.markAllRead(topic: Topic.ic);
+      expect(ids, hasLength(1));
+      expect(await repo.unreadCount(), 0);
+      await repo.markUnread(ids);
+      expect(await repo.unreadCount(), 1);
     });
 
     test("a teaser's full text is fetched from its page and kept", () async {

@@ -3,29 +3,35 @@ import 'package:provider/provider.dart';
 
 import '../models/article.dart';
 import '../state/article_images.dart';
+import '../state/articles_provider.dart';
 import '../theme.dart';
 import '../utils/arxiv.dart';
 import '../utils/format.dart';
 import 'net_image.dart';
+import 'tag_sweep.dart';
 import 'ui.dart';
 
 /// One inbox card: feed name, title, badges, author and date, with a sample image
 /// on the right when the article has one. Unread articles get a gold dot
 /// and a gold edge; read ones are dimmed.
 class ArticleTile extends StatelessWidget {
-  const ArticleTile({super.key, required this.article, required this.onTap});
+  const ArticleTile({
+    super.key,
+    required this.article,
+    required this.onTap,
+    this.index = 0,
+  });
 
   final Article article;
   final VoidCallback onTap;
+
+  /// Position in the list; the first screenful sweeps in one after another.
+  final int index;
 
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
     final unread = !article.isRead;
-    final meta = [
-      if (article.author != null && article.author!.isNotEmpty) article.author!,
-      relativeDate(article.displayDate),
-    ].join('  ·  ');
 
     // Ask for a picture if the feed didn't include one; the card updates
     // when it's found.
@@ -40,12 +46,14 @@ class ArticleTile extends StatelessWidget {
     final words = context.select<ArticleImages, int>(
       (i) => i.wordCountFor(article),
     );
-    final tags = articleTags(
-      context,
-      topic: article.feedTopic,
-      paper: arxivId(article.url, article.guid) != null,
-      readMinutes: readMinutesFor(words),
-    );
+    final paper = arxivId(article.url, article.guid) != null;
+    final minutes = readMinutesFor(words);
+    final meta = [
+      if (article.author != null && article.author!.isNotEmpty) article.author!,
+      relativeDate(article.displayDate),
+      if (paper) 'Paper' else if (minutes != null) '$minutes min read',
+    ].join('  ·  ');
+    final articles = context.read<ArticlesProvider>();
     final wide = MediaQuery.sizeOf(context).width > 700;
     final thumbW = wide ? 176.0 : 96.0;
     final thumbH = wide ? 108.0 : 72.0;
@@ -103,29 +111,24 @@ class ArticleTile extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            for (final tag in tags) ...[
-              Opacity(opacity: unread ? 1 : 0.6, child: tag),
-              const SizedBox(width: 6),
-            ],
-            if (tags.isNotEmpty) const SizedBox(width: 2),
-            Expanded(
-              child: Text(
-                meta,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: c.faint, fontSize: 12),
-              ),
-            ),
-          ],
+        Text(
+          meta,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: c.muted, fontSize: 12),
         ),
       ],
     );
 
-    return AppCard(
+    return TagSweepCard(
+      // A new view (filter or sort) replays the sweep.
+      key: ValueKey(articles.view),
+      colors: [for (final tag in article.tags) topicColor(context, tag)],
       onTap: onTap,
       highlight: unread,
+      dimmed: !unread,
+      animate: articles.claimSweep(article.id!),
+      delay: Duration(milliseconds: 70 * index.clamp(0, 12)),
       padding: const EdgeInsets.fromLTRB(16, 14, 14, 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,

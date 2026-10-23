@@ -32,40 +32,9 @@ class InboxScreen extends StatelessWidget {
                 icon: const Icon(Icons.close),
                 onPressed: () => articles.showFeed(null),
               ),
-        actions: [
-          IconButton(
-            tooltip: articles.unreadOnly ? 'Show all' : 'Show unread only',
-            isSelected: articles.unreadOnly,
-            icon: const Icon(Icons.mark_email_unread_outlined),
-            selectedIcon: const Icon(Icons.mark_email_unread),
-            onPressed: () => articles.setUnreadOnly(!articles.unreadOnly),
-          ),
-          PopupMenuButton<ArticleSort>(
-            tooltip: 'Sort',
-            icon: const Icon(Icons.sort),
-            initialValue: articles.sort,
-            // Sort is a saved preference; the app pushes it to the list.
-            onSelected: context.read<SettingsProvider>().setSort,
-            itemBuilder: (_) => [
-              for (final sort in ArticleSort.values)
-                CheckedPopupMenuItem(
-                  value: sort,
-                  checked: sort == articles.sort,
-                  child: Text(sort.label),
-                ),
-            ],
-          ),
-          IconButton(
-            tooltip: 'Mark all as read',
-            icon: const Icon(Icons.done_all),
-            onPressed: articles.unreadCount == 0
-                ? null
-                : () => articles.markAllRead(),
-          ),
-        ],
-        bottom: _TopicBar(
-          show: feeds.feeds.any((f) => f.topic != null),
+        bottom: _Toolbar(
           refreshing: feeds.refreshing,
+          wide: MediaQuery.sizeOf(context).width >= 900,
         ),
       ),
       body: LayoutBuilder(
@@ -137,7 +106,7 @@ class InboxScreen extends StatelessWidget {
               child: Center(child: CircularProgressIndicator()),
             );
           }
-          return _SwipeableArticle(article: items[index]);
+          return _SwipeableArticle(article: items[index], index: index);
         },
       ),
     );
@@ -164,9 +133,10 @@ class InboxScreen extends StatelessWidget {
 
 /// Swipe right to toggle read, swipe left to delete (with undo).
 class _SwipeableArticle extends StatelessWidget {
-  const _SwipeableArticle({required this.article});
+  const _SwipeableArticle({required this.article, required this.index});
 
   final Article article;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
@@ -212,6 +182,7 @@ class _SwipeableArticle extends StatelessWidget {
       },
       child: ArticleTile(
         article: article,
+        index: index,
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => ArticleDetailScreen(article: article),
@@ -243,22 +214,77 @@ class _SwipeableArticle extends StatelessWidget {
   }
 }
 
-/// "All · ML · IC" chips under the inbox title, plus the refresh bar.
-class _TopicBar extends StatelessWidget implements PreferredSizeWidget {
-  const _TopicBar({required this.show, required this.refreshing});
+/// Under the inbox title: the tag chips on the left, and on the right what
+/// the list shows (all or unread), its order, and marking it read. On a
+/// phone the two groups sit on separate rows.
+class _Toolbar extends StatelessWidget implements PreferredSizeWidget {
+  const _Toolbar({required this.refreshing, required this.wide});
 
-  final bool show;
   final bool refreshing;
+  final bool wide;
+
+  static const _rowHeight = 52.0;
 
   @override
-  Size get preferredSize => Size.fromHeight((show ? 48 : 0) + 2);
+  Size get preferredSize => Size.fromHeight(_rowHeight * (wide ? 1 : 2) + 2);
+
+  @override
+  Widget build(BuildContext context) {
+    final pad = wide ? 24.0 : pagePadding(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (wide)
+          SizedBox(
+            height: _rowHeight,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _TagChips(padding: EdgeInsets.only(left: pad)),
+                ),
+                const SizedBox(width: 16),
+                Padding(
+                  padding: EdgeInsets.only(right: pad),
+                  child: const _ViewControls(),
+                ),
+              ],
+            ),
+          )
+        else ...[
+          SizedBox(
+            height: _rowHeight,
+            child: _TagChips(padding: EdgeInsets.only(left: pad)),
+          ),
+          SizedBox(
+            height: _rowHeight,
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.symmetric(horizontal: pad),
+              child: const _ViewControls(),
+            ),
+          ),
+        ],
+        SizedBox(
+          height: 2,
+          child: refreshing
+              ? const LinearProgressIndicator(minHeight: 2)
+              : null,
+        ),
+      ],
+    );
+  }
+}
+
+/// All, then one chip per tag in its colour.
+class _TagChips extends StatelessWidget {
+  const _TagChips({required this.padding});
+
+  final EdgeInsets padding;
 
   @override
   Widget build(BuildContext context) {
     final articles = context.watch<ArticlesProvider>();
     final feeds = context.read<FeedsProvider>();
-    final wide = MediaQuery.sizeOf(context).width >= 900;
-    final pad = wide ? 24.0 : pagePadding(context);
     Widget chip(String label, Topic? topic) {
       final selected = articles.topic == topic;
       final color = topic == null ? null : topicColor(context, topic);
@@ -274,11 +300,11 @@ class _TopicBar extends StatelessWidget implements PreferredSizeWidget {
           ),
           selectedColor: color?.withValues(alpha: 0.28),
           onSelected: (_) {
-            // A feed about another topic would leave the list empty.
+            // A feed without this tag might leave the list empty.
             final feed = feeds.feeds
                 .where((f) => f.id == articles.feedId)
                 .firstOrNull;
-            if (topic != null && feed != null && feed.topic != topic) {
+            if (topic != null && feed != null && !feed.topics.contains(topic)) {
               articles.showFeed(null);
             }
             articles.showTopic(topic);
@@ -287,29 +313,102 @@ class _TopicBar extends StatelessWidget implements PreferredSizeWidget {
       );
     }
 
-    return Column(
+    return ListView(
+      scrollDirection: Axis.horizontal,
+      padding: padding.copyWith(top: 8, bottom: 8),
+      children: [
+        chip('All', null),
+        for (final topic in Topic.values) chip(topic.badge, topic),
+      ],
+    );
+  }
+}
+
+/// All / Unread, the sort, and Mark all read, each in words rather than
+/// bare icons.
+class _ViewControls extends StatelessWidget {
+  const _ViewControls();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final articles = context.watch<ArticlesProvider>();
+    const compact = VisualDensity(horizontal: -2, vertical: -2);
+
+    return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (show)
-          SizedBox(
-            height: 48,
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: EdgeInsets.fromLTRB(pad, 4, pad, 8),
+        SegmentedButton<bool>(
+          showSelectedIcon: false,
+          style: const ButtonStyle(visualDensity: compact),
+          segments: const [
+            ButtonSegment(value: false, label: Text('All')),
+            ButtonSegment(value: true, label: Text('Unread')),
+          ],
+          selected: {articles.unreadOnly},
+          onSelectionChanged: (v) => articles.setUnreadOnly(v.first),
+        ),
+        const SizedBox(width: 10),
+        MenuAnchor(
+          builder: (context, menu, _) => OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              visualDensity: compact,
+              foregroundColor: c.text,
+              side: BorderSide(color: c.border),
+            ),
+            onPressed: () => menu.isOpen ? menu.close() : menu.open(),
+            icon: const Icon(Icons.swap_vert, size: 18),
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                chip('All', null),
-                for (final topic in Topic.values) chip(topic.badge, topic),
+                Text(articles.sort.label),
+                const SizedBox(width: 2),
+                const Icon(Icons.arrow_drop_down, size: 20),
               ],
             ),
           ),
-        SizedBox(
-          height: 2,
-          child: refreshing
-              ? const LinearProgressIndicator(minHeight: 2)
+          menuChildren: [
+            for (final sort in ArticleSort.values)
+              MenuItemButton(
+                leadingIcon: Icon(
+                  Icons.check,
+                  size: 18,
+                  color: sort == articles.sort ? c.accent : Colors.transparent,
+                ),
+                // Sort is a saved preference; the app pushes it to the list.
+                onPressed: () => context.read<SettingsProvider>().setSort(sort),
+                child: Text(sort.label),
+              ),
+          ],
+        ),
+        const SizedBox(width: 10),
+        TextButton.icon(
+          style: TextButton.styleFrom(visualDensity: compact),
+          onPressed: articles.articles.any((a) => !a.isRead)
+              ? () => _markAllRead(context, articles)
               : null,
+          icon: const Icon(Icons.done_all, size: 18),
+          label: const Text('Mark all read'),
         ),
       ],
     );
+  }
+
+  static Future<void> _markAllRead(
+    BuildContext context,
+    ArticlesProvider articles,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final undo = await articles.markAllRead();
+    if (undo == null) return;
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: const Text('Marked as read'),
+          action: SnackBarAction(label: 'Undo', onPressed: undo),
+        ),
+      );
   }
 }
 
@@ -327,7 +426,7 @@ class _FeedSidebar extends StatelessWidget {
     final topic = articles.topic;
     final shown = [
       for (final f in feeds)
-        if (topic == null || f.topic == topic) f,
+        if (topic == null || f.topics.contains(topic)) f,
     ];
     final unread = shown.fold<int>(0, (n, f) => n + f.unreadCount);
 
@@ -336,6 +435,7 @@ class _FeedSidebar extends StatelessWidget {
       required bool selected,
       required VoidCallback onTap,
       Widget? leading,
+      Widget? trailing,
       int count = 0,
     }) {
       return Padding(
@@ -371,6 +471,7 @@ class _FeedSidebar extends StatelessWidget {
                       ),
                     ),
                   ),
+                  if (trailing != null) ...[const SizedBox(width: 6), trailing],
                   if (count > 0)
                     Container(
                       margin: const EdgeInsets.only(left: 8),
@@ -429,26 +530,8 @@ class _FeedSidebar extends StatelessWidget {
               title: f.title,
               selected: articles.feedId == f.id,
               count: f.unreadCount,
-              leading: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  FeedAvatar(title: f.title, favicon: f.favicon, size: 22),
-                  if (f.topic != null)
-                    Positioned(
-                      right: -3,
-                      bottom: -3,
-                      child: Container(
-                        width: 9,
-                        height: 9,
-                        decoration: BoxDecoration(
-                          color: topicColor(context, f.topic!),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: c.bg, width: 1.5),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
+              leading: FeedAvatar(title: f.title, favicon: f.favicon, size: 22),
+              trailing: TagDots(f.topics, size: 7),
               onTap: () => articles.feedId == f.id
                   ? articles.showFeed(null)
                   : articles.showFeed(f.id, title: f.title),

@@ -141,7 +141,7 @@ class _AddFeedDialogState extends State<AddFeedDialog> {
     try {
       final feed = await context.read<FeedsProvider>().addFeed(
         _controller.text,
-        topic: topic,
+        topics: topic == null ? null : {topic},
       );
       if (mounted) Navigator.of(context).pop(feed);
     } catch (e) {

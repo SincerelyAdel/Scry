@@ -84,6 +84,7 @@ class ArticlesProvider extends ChangeNotifier {
     if (sort == _sort) return;
     _sort = sort;
     _articles = const [];
+    _view++;
     reload();
   }
 
@@ -91,6 +92,7 @@ class ArticlesProvider extends ChangeNotifier {
     if (value == _unreadOnly) return;
     _unreadOnly = value;
     _articles = const [];
+    _view++;
     reload();
   }
 
@@ -98,6 +100,7 @@ class ArticlesProvider extends ChangeNotifier {
     if (topic == _topic) return;
     _topic = topic;
     _articles = const [];
+    _view++;
     reload();
   }
 
@@ -106,6 +109,7 @@ class ArticlesProvider extends ChangeNotifier {
     _feedId = feedId;
     _feedTitle = feedId == null ? null : title;
     _articles = const [];
+    _view++;
     reload();
   }
 
@@ -118,11 +122,31 @@ class ArticlesProvider extends ChangeNotifier {
     onCountsChanged?.call();
   }
 
-  Future<void> markAllRead() async {
-    await _repo.markAllRead(feedId: _feedId);
+  /// Marks what the inbox shows read. Returns an undo, or null when there
+  /// was nothing unread.
+  Future<Future<void> Function()?> markAllRead() async {
+    final ids = await _repo.markAllRead(feedId: _feedId, topic: _topic);
     await reload();
     onCountsChanged?.call();
+    if (ids.isEmpty) return null;
+    return () async {
+      await _repo.markUnread(ids);
+      await reload();
+      onCountsChanged?.call();
+    };
   }
+
+  /// Bumped whenever the filters or sort change, so cards can replay their
+  /// colour animation.
+  int get view => _view;
+  int _view = 0;
+
+  /// Articles whose card has swept in its colours since the filters last
+  /// changed, so scrolling back doesn't replay it.
+  final Set<(int, int)> _swept = {};
+
+  /// True the first time [articleId]'s card is shown in this view.
+  bool claimSweep(int articleId) => _swept.add((_view, articleId));
 
   /// Hides [article]; returns its old index so [restore] can undo.
   Future<int> delete(Article article) async {

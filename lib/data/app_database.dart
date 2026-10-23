@@ -20,7 +20,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 3;
+  static const _version = 4;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -77,6 +77,7 @@ class AppDatabase {
         addedDate INTEGER NOT NULL,
         $_imageColumns,
         $_textColumns,
+        tags TEXT,
         UNIQUE (feedId, guid)
       )
     ''');
@@ -114,7 +115,39 @@ class AppDatabase {
       }
       await _backfillTopicsAndLengths(db);
     }
+    if (from < 4) {
+      await db.execute('ALTER TABLE articles ADD COLUMN tags TEXT');
+      await _backfillTags(db);
+    }
   }
+
+  /// Added in version 4: tags from each article's own words.
+  static Future<void> _backfillTags(Database db) async {
+    final rows = await db.query(
+      'articles',
+      columns: ['id', 'title', 'summary', 'content', 'fullContent'],
+    );
+    final batch = db.batch();
+    for (final row in rows) {
+      final tags = articleTags(
+        row['title'] as String,
+        (row['fullContent'] ?? row['content'] ?? row['summary']) as String?,
+      );
+      if (tags != null) {
+        batch.update(
+          'articles',
+          {'tags': tags},
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+      }
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// The stored form of [tagsInText] for an article's title and HTML body.
+  static String? articleTags(String title, String? html) =>
+      topicsToString(tagsInText(title, htmlToPlainText(html)));
 
   /// Guesses topics for existing feeds and measures existing articles.
   /// Teasers that were already checked for a picture are checked again, so
@@ -125,11 +158,13 @@ class AppDatabase {
       'feeds',
       columns: ['id', 'url', 'title'],
     )) {
-      final topic = guessTopic(feed['url'] as String, feed['title'] as String);
-      if (topic != null) {
+      final topics = topicsToString(
+        guessTopics(feed['url'] as String, feed['title'] as String),
+      );
+      if (topics != null) {
         batch.update(
           'feeds',
-          {'topic': topic.name},
+          {'topic': topics},
           where: 'id = ?',
           whereArgs: [feed['id']],
         );
@@ -282,14 +317,14 @@ class AppDatabase {
       args.add(feedId);
     }
     if (topic != null) {
-      where.add('f.topic = ?');
-      args.add(topic.name);
+      where.add(_hasTag);
+      args.add('%,${topic.name},%');
     }
     final rows = await _db.rawQuery(
       '''
       SELECT a.id, a.feedId, a.guid, a.title, a.author, a.url, a.pubDate,
              a.isRead, a.addedDate, a.imageUrl, a.imageChecked, a.wordCount,
-             f.title AS feedTitle, f.topic AS feedTopic
+             a.tags, f.title AS feedTitle, f.topic AS feedTopic
       FROM articles a
       JOIN feeds f ON f.id = a.feedId
       WHERE ${where.join(' AND ')}
@@ -300,6 +335,11 @@ class AppDatabase {
     );
     return rows.map(Article.fromMap).toList();
   }
+
+  /// True when the article or its feed has the tag in the argument
+  /// (`%,ml,%`).
+  static const _hasTag =
+      "(',' || IFNULL(f.topic, '') || ',' || IFNULL(a.tags, '') || ',') LIKE ?";
 
   /// Sorts articles without a read time (arXiv papers, teasers whose full
   /// text isn't fetched yet) after the rest. Matches readMinutesFor.
@@ -348,20 +388,25 @@ class AppDatabase {
   }
 
   /// Stores an article's text from its web page and its new length.
-  Future<void> saveFullText(int articleId, String html, int wordCount) async {
+  Future<void> saveFullText(
+    int articleId,
+    String html,
+    int wordCount,
+    String? tags,
+  ) async {
     await _db.update(
       'articles',
-      {'fullContent': html, 'wordCount': wordCount},
+      {'fullContent': html, 'wordCount': wordCount, 'tags': tags},
       where: 'id = ?',
       whereArgs: [articleId],
     );
   }
 
-  /// Sets a feed's topic, or clears it with null.
-  Future<void> setFeedTopic(int feedId, Topic? topic) async {
+  /// Sets a feed's tags.
+  Future<void> setFeedTopics(int feedId, Set<Topic> topics) async {
     await _db.update(
       'feeds',
-      {'topic': topic?.name},
+      {'topic': topicsToString(topics)},
       where: 'id = ?',
       whereArgs: [feedId],
     );
@@ -412,14 +457,43 @@ class AppDatabase {
     );
   }
 
-  /// Marks every article read, or just one feed's when [feedId] is given.
-  Future<void> markAllRead({int? feedId}) async {
-    await _db.update(
-      'articles',
-      {'isRead': 1},
-      where: feedId == null ? 'isRead = 0' : 'isRead = 0 AND feedId = ?',
-      whereArgs: feedId == null ? null : [feedId],
+  /// Marks the unread articles shown by the inbox's filters read, and
+  /// returns their ids so it can be undone with [markUnread].
+  Future<List<int>> markAllRead({int? feedId, Topic? topic}) async {
+    final where = ['a.isRead = 0', 'a.isDeleted = 0'];
+    final args = <Object?>[];
+    if (feedId != null) {
+      where.add('a.feedId = ?');
+      args.add(feedId);
+    }
+    if (topic != null) {
+      where.add(_hasTag);
+      args.add('%,${topic.name},%');
+    }
+    final rows = await _db.rawQuery(
+      'SELECT a.id FROM articles a JOIN feeds f ON f.id = a.feedId '
+      'WHERE ${where.join(' AND ')}',
+      args,
     );
+    final ids = [for (final row in rows) row['id'] as int];
+    await _setReadIds(ids, true);
+    return ids;
+  }
+
+  /// Undoes [markAllRead].
+  Future<void> markUnread(List<int> ids) => _setReadIds(ids, false);
+
+  Future<void> _setReadIds(List<int> ids, bool isRead) async {
+    // SQLite limits how many arguments one statement takes.
+    for (var i = 0; i < ids.length; i += 500) {
+      final chunk = ids.sublist(i, (i + 500).clamp(0, ids.length));
+      await _db.update(
+        'articles',
+        {'isRead': isRead ? 1 : 0},
+        where: 'id IN (${List.filled(chunk.length, '?').join(',')})',
+        whereArgs: chunk,
+      );
+    }
   }
 
   /// Hides an article from the inbox (see the schema note on isDeleted).

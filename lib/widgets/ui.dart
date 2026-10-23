@@ -193,14 +193,9 @@ class FeedAvatar extends StatelessWidget {
   }
 }
 
-/// Colour of a topic's badge: purple for ML, teal for IC.
-Color topicColor(BuildContext context, Topic topic) {
-  final dark = context.palette.isDark;
-  return switch (topic) {
-    Topic.ml => dark ? const Color(0xFFB39DFF) : const Color(0xFF6A4FC4),
-    Topic.ic => dark ? const Color(0xFF5CCFC0) : const Color(0xFF1F7F73),
-  };
-}
+/// A tag's colour on the current theme.
+Color topicColor(BuildContext context, Topic topic) =>
+    topic.color(isDark: context.palette.isDark);
 
 /// A small rounded label: a feed's topic, "Paper", a read time.
 class Tag extends StatelessWidget {
@@ -249,18 +244,45 @@ class Tag extends StatelessWidget {
   }
 }
 
-/// Badges for an article: its feed's topic, "Paper" for arXiv papers, and
-/// the read time once the full text is known.
+/// Badges for an article in the reader: its tags, "Paper" for arXiv
+/// papers, and the read time once the full text is known.
 List<Widget> articleTags(
   BuildContext context, {
-  required Topic? topic,
+  required List<Topic> tags,
   required bool paper,
   required int? readMinutes,
 }) {
   return [
-    if (topic != null) Tag.topic(context, topic),
+    for (final tag in tags) Tag.topic(context, tag),
     if (paper) const Tag('Paper', icon: Icons.description_outlined),
     if (!paper && readMinutes != null)
       Tag('$readMinutes min', icon: Icons.schedule),
   ];
+}
+
+/// Small coloured dots for a list of tags, e.g. beside a feed's name.
+class TagDots extends StatelessWidget {
+  const TagDots(this.tags, {super.key, this.size = 8});
+
+  final Iterable<Topic> tags;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (final tag in tags)
+          Container(
+            width: size,
+            height: size,
+            margin: const EdgeInsets.only(left: 3),
+            decoration: BoxDecoration(
+              color: topicColor(context, tag),
+              shape: BoxShape.circle,
+            ),
+          ),
+      ],
+    );
+  }
 }

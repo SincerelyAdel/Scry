@@ -30,16 +30,16 @@ class FeedsProvider extends ChangeNotifier {
 
   /// Throws on failure (bad URL, network error, not a feed, duplicate) with
   /// a message suitable for the UI.
-  Future<Feed> addFeed(String url, {Topic? topic}) async {
-    final feed = await _repo.addFeed(url, topic: topic);
+  Future<Feed> addFeed(String url, {Set<Topic>? topics}) async {
+    final feed = await _repo.addFeed(url, topics: topics);
     await load();
     onLibraryChanged?.call();
     return feed;
   }
 
-  /// Changes what [feed] is about; the inbox reloads for the new badges.
-  Future<void> setTopic(Feed feed, Topic? topic) async {
-    await _repo.setFeedTopic(feed.id!, topic);
+  /// Changes [feed]'s tags; the inbox reloads for the new colours.
+  Future<void> setTopics(Feed feed, Set<Topic> topics) async {
+    await _repo.setFeedTopics(feed.id!, topics);
     await load();
     onLibraryChanged?.call();
   }

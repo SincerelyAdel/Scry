@@ -62,8 +62,8 @@ class FeedRepository {
 
   /// Subscribes to the feed at [input], which may be a feed URL or a web
   /// page that links to one. Fetches and stores its articles straight away.
-  /// The feed's [topic] is guessed when not given.
-  Future<Feed> addFeed(String input, {Topic? topic}) async {
+  /// The feed's [topics] are guessed when not given.
+  Future<Feed> addFeed(String input, {Set<Topic>? topics}) async {
     final url = normalizeUrl(input);
     await _ensureNotSubscribed(url);
 
@@ -91,7 +91,7 @@ class FeedRepository {
       lastUpdated: DateTime.now(),
       syncStatus: SyncStatus.ok,
       favicon: await _fetchFavicon(parsed.siteUrl ?? feedUrl),
-      topic: topic ?? guessTopic(feedUrl, parsed.title),
+      topics: topics ?? guessTopics(feedUrl, parsed.title),
     );
     final id = await _db.insertFeed(feed);
     await _storeItems(id, parsed.items);
@@ -100,8 +100,8 @@ class FeedRepository {
 
   Future<void> deleteFeed(int feedId) => _db.deleteFeed(feedId);
 
-  Future<void> setFeedTopic(int feedId, Topic? topic) =>
-      _db.setFeedTopic(feedId, topic);
+  Future<void> setFeedTopics(int feedId, Set<Topic> topics) =>
+      _db.setFeedTopics(feedId, topics);
 
   Future<RefreshResult> refreshFeed(Feed feed) async {
     try {
@@ -119,7 +119,7 @@ class FeedRepository {
         favicon:
             feed.favicon ??
             await _fetchFavicon(parsed.siteUrl ?? feed.siteUrl ?? feed.url),
-        topic: feed.topic,
+        topics: feed.topics,
       );
       await _db.updateFeed(updated);
       return RefreshResult(feed: updated, newArticles: added);
@@ -133,7 +133,7 @@ class FeedRepository {
         syncStatus: SyncStatus.error,
         lastError: e.toString(),
         favicon: feed.favicon,
-        topic: feed.topic,
+        topics: feed.topics,
       );
       await _db.updateFeed(failed);
       return RefreshResult(feed: failed, error: e.toString());
@@ -182,7 +182,11 @@ class FeedRepository {
   Future<void> setRead(int articleId, bool isRead) =>
       _db.setRead(articleId, isRead);
 
-  Future<void> markAllRead({int? feedId}) => _db.markAllRead(feedId: feedId);
+  /// Marks what the inbox shows read; returns the ids for [markUnread].
+  Future<List<int>> markAllRead({int? feedId, Topic? topic}) =>
+      _db.markAllRead(feedId: feedId, topic: topic);
+
+  Future<void> markUnread(List<int> ids) => _db.markUnread(ids);
 
   Future<void> deleteArticle(int articleId) => _db.deleteArticle(articleId);
 
@@ -233,7 +237,8 @@ class FeedRepository {
         if (text != null) {
           final count = countWords(htmlToPlainText(text));
           if (count > article.wordCount) {
-            await _db.saveFullText(id, text, count);
+            final tags = AppDatabase.articleTags(article.title, text);
+            await _db.saveFullText(id, text, count, tags);
             words = count;
           }
         }
@@ -332,6 +337,9 @@ class FeedRepository {
           content: item.content,
           imageUrl: item.imageUrl,
           wordCount: AppDatabase.bodyWordCount(item.content, item.summary),
+          ownTags: topicsFromString(
+            AppDatabase.articleTags(item.title, item.content ?? item.summary),
+          ),
           addedDate: now,
         ),
     ];

@@ -17,7 +17,8 @@ class Article {
     this.feedTitle,
     this.imageUrl,
     this.imageChecked = false,
-    this.feedTopic,
+    this.feedTopics = const {},
+    this.ownTags = const {},
     this.wordCount = 0,
     this.fullContent,
   });
@@ -55,8 +56,17 @@ class Article {
   /// isn't downloaded again when there's none.
   final bool imageChecked;
 
-  /// The feed's topic, joined in for badges.
-  final Topic? feedTopic;
+  /// The feed's tags, joined in.
+  final Set<Topic> feedTopics;
+
+  /// Tags from the article's own words (see tagsInText).
+  final Set<Topic> ownTags;
+
+  /// Every tag: the feed's and the article's own, in a fixed order.
+  List<Topic> get tags => [
+    for (final t in Topic.values)
+      if (feedTopics.contains(t) || ownTags.contains(t)) t,
+  ];
 
   /// Length of the best body we have: the page's text once fetched, else
   /// the feed's content or summary. Used for the read-time badge.
@@ -93,7 +103,8 @@ class Article {
       feedTitle: feedTitle,
       imageUrl: imageUrl ?? this.imageUrl,
       imageChecked: imageChecked ?? this.imageChecked,
-      feedTopic: feedTopic,
+      feedTopics: feedTopics,
+      ownTags: ownTags,
       wordCount: wordCount ?? this.wordCount,
       fullContent: fullContent ?? this.fullContent,
     );
@@ -115,7 +126,8 @@ class Article {
       feedTitle: map['feedTitle'] as String?,
       imageUrl: map['imageUrl'] as String?,
       imageChecked: map['imageChecked'] == 1,
-      feedTopic: Topic.fromName(map['feedTopic'] as String?),
+      feedTopics: topicsFromString(map['feedTopic'] as String?),
+      ownTags: topicsFromString(map['tags'] as String?),
       wordCount: (map['wordCount'] as int?) ?? 0,
       fullContent: map['fullContent'] as String?,
     );
@@ -139,6 +151,7 @@ class Article {
       'imageChecked': imageChecked ? 1 : 0,
       'wordCount': wordCount,
       'fullContent': fullContent,
+      'tags': topicsToString(ownTags),
     };
   }
 }

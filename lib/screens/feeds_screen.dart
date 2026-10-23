@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -122,9 +123,9 @@ class _FeedTile extends StatelessWidget {
                   ),
                 ),
               ),
-              if (feed.topic != null) ...[
-                const SizedBox(width: 8),
-                Tag.topic(context, feed.topic!),
+              for (final topic in feed.topics) ...[
+                const SizedBox(width: 6),
+                Tag.topic(context, topic),
               ],
               if (feed.unreadCount > 0) _UnreadPill(feed.unreadCount),
               PopupMenuButton<_FeedAction>(
@@ -136,7 +137,7 @@ class _FeedTile extends StatelessWidget {
                     value: _FeedAction.refresh,
                     child: Text('Refresh'),
                   ),
-                  PopupMenuItem(value: _FeedAction.topic, child: Text('Topic')),
+                  PopupMenuItem(value: _FeedAction.topic, child: Text('Tags')),
                   PopupMenuItem(
                     value: _FeedAction.copyUrl,
                     child: Text('Copy URL'),
@@ -189,35 +190,12 @@ class _FeedTile extends StatelessWidget {
           ),
         );
       case _FeedAction.topic:
-        final choice = await showDialog<_TopicChoice>(
+        final picked = await showDialog<Set<Topic>>(
           context: context,
-          builder: (context) => SimpleDialog(
-            title: Text('What is ${feed.title} about?'),
-            children: [
-              for (final topic in [...Topic.values, null])
-                SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, _TopicChoice(topic)),
-                  child: Row(
-                    children: [
-                      Icon(
-                        feed.topic == topic
-                            ? Icons.radio_button_checked
-                            : Icons.radio_button_unchecked,
-                        size: 20,
-                        color: topic == null
-                            ? context.palette.muted
-                            : topicColor(context, topic),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(topic?.label ?? 'No topic'),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+          builder: (_) => _TagsDialog(feed: feed),
         );
-        if (choice != null && choice.topic != feed.topic) {
-          await provider.setTopic(feed, choice.topic);
+        if (picked != null && !setEquals(picked, feed.topics)) {
+          await provider.setTopics(feed, picked);
         }
       case _FeedAction.copyUrl:
         await Clipboard.setData(ClipboardData(text: feed.url));
@@ -251,11 +229,53 @@ class _FeedTile extends StatelessWidget {
 
 enum _FeedAction { refresh, topic, copyUrl, delete }
 
-/// A picked topic, so "no topic" can be told apart from a dismissed dialog.
-class _TopicChoice {
-  const _TopicChoice(this.topic);
+/// Tick the tags a feed is about. Its articles also pick up tags from
+/// their own words.
+class _TagsDialog extends StatefulWidget {
+  const _TagsDialog({required this.feed});
 
-  final Topic? topic;
+  final Feed feed;
+
+  @override
+  State<_TagsDialog> createState() => _TagsDialogState();
+}
+
+class _TagsDialogState extends State<_TagsDialog> {
+  late final Set<Topic> _picked = {...widget.feed.topics};
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Tags for ${widget.feed.title}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final topic in Topic.values)
+            CheckboxListTile(
+              value: _picked.contains(topic),
+              activeColor: topicColor(context, topic),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: Text(topic.label),
+              secondary: Tag.topic(context, topic),
+              onChanged: (on) => setState(
+                () => on == true ? _picked.add(topic) : _picked.remove(topic),
+              ),
+            ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _picked),
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
 }
 
 /// Gold count of unread articles.

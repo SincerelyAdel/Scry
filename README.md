@@ -20,16 +20,23 @@ The icon is that ball, painted in gold and purple brush strokes.
   advertised feed); RSS 2.0, RSS 1.0 (RDF) and Atom. The feed list shows the
   favicon, topic, article and unread counts, the last update time, and any
   refresh error.
-- **Topics**: each feed is about machine learning (**ML**, purple) or chips
-  and IC design (**IC**, teal). The topic is guessed when a feed is added
-  (from arXiv categories and names) and can be changed from the feed's menu.
-  Chips at the top of the inbox show one topic at a time.
-- **Badges**: inbox cards and the reader show the feed's topic, **Paper** for
-  arXiv papers, and the read time once the article's length is known.
+- **Tags**: **ML** (purple), **IC** (chips and IC design, teal) and
+  **Claude** (clay). A feed can have several, guessed when it's added (from
+  arXiv categories and names) and changed from its menu (**Tags**). Each
+  article carries its feed's tags plus any its own words earn: a match in
+  the title, or several in the text (`tagsInText` in `lib/models/topic.dart`;
+  a new tag is one more value there). Chips at the top of the inbox show one
+  tag at a time.
+- **Coloured cards**: inbox cards are coloured by their tags instead of
+  carrying badges. The outline runs through the tag colours and a wash of
+  them is brushed in from the left with a bright stroke passing over, one
+  card after another, replayed when the filter or sort changes. **Paper**
+  and the read time sit in the card's grey line; the reader shows badges.
 - **Unified inbox**: every feed's articles merged into one list, newest first,
-  with unread dots. Sort by date, by feed, unread first, or by read time
-  (quick or long reads first; papers and unfetched teasers go last); show
-  only unread articles. On tablets the feed list sits beside the articles:
+  with unread dots. Under the title: the tag chips, an **All / Unread**
+  switch, the sort (newest, by feed, unread first, or by read time: quick
+  or long reads first, with papers and unfetched teasers last), and **Mark
+  all read**, which marks only what the filters show and can be undone. On tablets the feed list sits beside the articles:
   tap a feed to see only its articles, and combine it with the topic chips.
 - **Gestures**: swipe right to toggle read, swipe left to delete (with undo).
   Deleted articles don't come back on the next refresh.
@@ -113,7 +120,7 @@ macOS already has it). CI runs format, analyze and tests on every push.
 lib/
   main.dart                 opens prefs + DB, schedules background sync
   app.dart                  Provider wiring, Material 3 themes
-  models/                   Feed, Article, ArticleSort, Topic
+  models/                   Feed, Article, ArticleSort, Topic (tags)
   data/
     app_database.dart       sqflite schema and every SQL query
     feed_repository.dart    fetch → parse → store; used by the UI and the worker
@@ -158,7 +165,7 @@ tool/
 | syncStatus | never / ok / error | url | text? |
 | lastError | text? | pubDate | epoch ms? |
 | favicon | blob? | summary | text? (HTML) |
-| topic | ml / ic / null | content | text? (HTML) |
+| topic | tags, e.g. `ml,ic` | content | text? (HTML) |
 | | | isRead | 0/1 |
 | | | isDeleted | 0/1 |
 | | | addedDate | epoch ms |
@@ -168,6 +175,7 @@ tool/
 | | | figuresState | 0 unknown / 1 found / 2 no HTML |
 | | | wordCount | int (best body's length) |
 | | | fullContent | text? (HTML from the web page) |
+| | | tags | text? (from its own words, e.g. `ic,claude`) |
 
 ### Package notes
 

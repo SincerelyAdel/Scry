@@ -256,7 +256,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                 runSpacing: 6,
                 children: articleTags(
                   context,
-                  topic: _article.feedTopic,
+                  tags: _article.tags,
                   paper: _paperId != null,
                   readMinutes: _article.readMinutes,
                 ),

@@ -26,6 +26,10 @@ void main() {
   tearDown(() => db.close());
 
   Future<void> pumpApp(WidgetTester tester) async {
+    // A phone-sized screen, tall enough for every test article.
+    tester.view.physicalSize = const Size(800, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ScryApp(
         repository: repo,
