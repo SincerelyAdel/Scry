@@ -27,8 +27,10 @@ The icon is that ball, painted in gold and purple brush strokes.
 - **Badges**: inbox cards and the reader show the feed's topic, **Paper** for
   arXiv papers, and the read time once the article's length is known.
 - **Unified inbox**: every feed's articles merged into one list, newest first,
-  with unread dots. Sort by date, by feed, or unread first; show only unread
-  articles; tap a feed to see only its articles.
+  with unread dots. Sort by date, by feed, unread first, or by read time
+  (quick or long reads first; papers and unfetched teasers go last); show
+  only unread articles. On tablets the feed list sits beside the articles:
+  tap a feed to see only its articles, and combine it with the topic chips.
 - **Gestures**: swipe right to toggle read, swipe left to delete (with undo).
   Deleted articles don't come back on the next refresh.
 - **Sample images**: every inbox card shows a picture when the article has

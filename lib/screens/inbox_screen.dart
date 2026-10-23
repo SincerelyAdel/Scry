@@ -64,15 +64,26 @@ class InboxScreen extends StatelessWidget {
           ),
         ],
         bottom: _TopicBar(
-          show:
-              articles.feedId == null &&
-              feeds.feeds.any((f) => f.topic != null),
+          show: feeds.feeds.any((f) => f.topic != null),
           refreshing: feeds.refreshing,
         ),
       ),
-      body: RefreshIndicator(
-        onRefresh: () => _refresh(context),
-        child: _body(context, articles, feeds),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final list = RefreshIndicator(
+            onRefresh: () => _refresh(context),
+            child: _body(context, articles, feeds),
+          );
+          // Tablets get the feed list beside the articles.
+          if (constraints.maxWidth < 900 || feeds.feeds.isEmpty) return list;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: list),
+              const _FeedSidebar(),
+            ],
+          );
+        },
       ),
     );
   }
@@ -106,7 +117,8 @@ class InboxScreen extends StatelessWidget {
     }
 
     final items = articles.articles;
-    final pad = pagePadding(context);
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final pad = wide ? 24.0 : pagePadding(context);
     return NotificationListener<ScrollNotification>(
       onNotification: (n) {
         if (n.metrics.extentAfter < 800) articles.loadMore();
@@ -244,7 +256,9 @@ class _TopicBar extends StatelessWidget implements PreferredSizeWidget {
   @override
   Widget build(BuildContext context) {
     final articles = context.watch<ArticlesProvider>();
-    final pad = pagePadding(context);
+    final feeds = context.read<FeedsProvider>();
+    final wide = MediaQuery.sizeOf(context).width >= 900;
+    final pad = wide ? 24.0 : pagePadding(context);
     Widget chip(String label, Topic? topic) {
       final selected = articles.topic == topic;
       final color = topic == null ? null : topicColor(context, topic);
@@ -259,7 +273,16 @@ class _TopicBar extends StatelessWidget implements PreferredSizeWidget {
             color: selected ? null : color,
           ),
           selectedColor: color?.withValues(alpha: 0.28),
-          onSelected: (_) => articles.showTopic(topic),
+          onSelected: (_) {
+            // A feed about another topic would leave the list empty.
+            final feed = feeds.feeds
+                .where((f) => f.id == articles.feedId)
+                .firstOrNull;
+            if (topic != null && feed != null && feed.topic != topic) {
+              articles.showFeed(null);
+            }
+            articles.showTopic(topic);
+          },
         ),
       );
     }
@@ -286,6 +309,152 @@ class _TopicBar extends StatelessWidget implements PreferredSizeWidget {
               : null,
         ),
       ],
+    );
+  }
+}
+
+/// The feed list to the right of the inbox on tablets. Tapping a feed shows
+/// only its articles; tapping it again, or All feeds, shows every feed. Only
+/// feeds about the chosen topic are listed.
+class _FeedSidebar extends StatelessWidget {
+  const _FeedSidebar();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final articles = context.watch<ArticlesProvider>();
+    final feeds = context.watch<FeedsProvider>().feeds;
+    final topic = articles.topic;
+    final shown = [
+      for (final f in feeds)
+        if (topic == null || f.topic == topic) f,
+    ];
+    final unread = shown.fold<int>(0, (n, f) => n + f.unreadCount);
+
+    Widget row({
+      required String title,
+      required bool selected,
+      required VoidCallback onTap,
+      Widget? leading,
+      int count = 0,
+    }) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 2),
+        child: Material(
+          color: selected ? c.surface : Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: selected
+                ? BorderSide(color: c.accent.withValues(alpha: 0.7))
+                : BorderSide.none,
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              child: Row(
+                children: [
+                  ?leading,
+                  if (leading != null) const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: c.text,
+                        fontSize: 14,
+                        fontWeight: selected
+                            ? FontWeight.w600
+                            : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                  if (count > 0)
+                    Container(
+                      margin: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: c.button,
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                      child: Text(
+                        count > 999 ? '999+' : '$count',
+                        style: TextStyle(
+                          color: c.onButton,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: 290,
+      margin: const EdgeInsets.only(right: 16),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 4, 10, 8),
+            child: Text(
+              'FEEDS',
+              style: TextStyle(
+                color: c.faint,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+          row(
+            title: 'All feeds',
+            selected: articles.feedId == null,
+            count: unread,
+            leading: Icon(Icons.all_inbox_outlined, size: 18, color: c.muted),
+            onTap: () => articles.showFeed(null),
+          ),
+          for (final f in shown)
+            row(
+              title: f.title,
+              selected: articles.feedId == f.id,
+              count: f.unreadCount,
+              leading: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  FeedAvatar(title: f.title, favicon: f.favicon, size: 22),
+                  if (f.topic != null)
+                    Positioned(
+                      right: -3,
+                      bottom: -3,
+                      child: Container(
+                        width: 9,
+                        height: 9,
+                        decoration: BoxDecoration(
+                          color: topicColor(context, f.topic!),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: c.bg, width: 1.5),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              onTap: () => articles.feedId == f.id
+                  ? articles.showFeed(null)
+                  : articles.showFeed(f.id, title: f.title),
+            ),
+        ],
+      ),
     );
   }
 }

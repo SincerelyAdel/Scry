@@ -271,6 +271,8 @@ class AppDatabase {
       ArticleSort.newest => '$date DESC, a.id DESC',
       ArticleSort.byFeed => 'f.title COLLATE NOCASE, $date DESC, a.id DESC',
       ArticleSort.unreadFirst => 'a.isRead ASC, $date DESC, a.id DESC',
+      ArticleSort.shortest => '$_unknownLength, a.wordCount ASC, $date DESC',
+      ArticleSort.longest => '$_unknownLength, a.wordCount DESC, $date DESC',
     };
     final where = <String>['a.isDeleted = 0'];
     final args = <Object?>[];
@@ -298,6 +300,12 @@ class AppDatabase {
     );
     return rows.map(Article.fromMap).toList();
   }
+
+  /// Sorts articles without a read time (arXiv papers, teasers whose full
+  /// text isn't fetched yet) after the rest. Matches readMinutesFor.
+  static const _unknownLength =
+      "CASE WHEN a.wordCount < $minArticleWords OR a.url LIKE '%arxiv.org/%' "
+      'THEN 1 ELSE 0 END';
 
   /// The full article, including summary and content.
   Future<Article?> getArticle(int id) async {

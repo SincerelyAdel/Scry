@@ -36,7 +36,8 @@ class ArticlesProvider extends ChangeNotifier {
   ArticleSort get sort => _sort;
   bool get unreadOnly => _unreadOnly;
 
-  /// When set, the inbox shows only feeds about this topic.
+  /// When set, the inbox shows only feeds about this topic. Combines with
+  /// [feedId]; the inbox clears the feed when it isn't about the topic.
   Topic? get topic => _topic;
 
   /// When set, the inbox shows a single feed.
@@ -153,8 +154,7 @@ class ArticlesProvider extends ChangeNotifier {
       sort: _sort,
       unreadOnly: _unreadOnly,
       feedId: _feedId,
-      // One feed's list shows all of it, whatever topic is picked.
-      topic: _feedId == null ? _topic : null,
+      topic: _topic,
       limit: limit,
       offset: offset,
     );

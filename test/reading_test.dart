@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:scry/data/app_database.dart';
 import 'package:scry/data/feed_repository.dart';
 import 'package:scry/models/article.dart';
+import 'package:scry/models/article_sort.dart';
 import 'package:scry/models/topic.dart';
 import 'package:scry/utils/html_text.dart';
 import 'package:scry/utils/readable.dart';
@@ -113,6 +114,31 @@ void main() {
     expect(readMinutesFor(40), isNull);
     expect(readMinutesFor(230), 1);
     expect(readMinutesFor(2300), 10);
+  });
+
+  test('read-time sorts put unknown lengths last', () async {
+    final db = await openTestDatabase();
+    String body(int words) =>
+        '&lt;p&gt;${List.filled(words, 'word').join(' ')}&lt;/p&gt;';
+    const url = 'https://long.example.com/feed.xml';
+    final fetcher = FakeFetcher({
+      url:
+          '<?xml version="1.0"?><rss version="2.0"><channel><title>L</title>'
+          '<item><title>Short</title><link>https://l.com/1</link>'
+          '<description>${body(300)}</description></item>'
+          '<item><title>Teaser</title><link>https://l.com/2</link>'
+          '<description>Just a line.</description></item>'
+          '<item><title>Long</title><link>https://l.com/3</link>'
+          '<description>${body(3000)}</description></item>'
+          '</channel></rss>',
+    });
+    final repo = FeedRepository(db, fetcher);
+    await repo.addFeed(url);
+    Future<List<String>> titles(ArticleSort sort) async =>
+        (await repo.listArticles(sort: sort)).map((a) => a.title).toList();
+    expect(await titles(ArticleSort.shortest), ['Short', 'Long', 'Teaser']);
+    expect(await titles(ArticleSort.longest), ['Long', 'Short', 'Teaser']);
+    await db.close();
   });
 
   group('repository', () {
