@@ -7,8 +7,12 @@ around the screen edge.
 Subscribe to tech blogs and paper feeds, read everything in one inbox, and
 keep reading without a connection.
 
-> This repo used to hold Snippefy, a small PyQt tool for making VS Code
-> snippets. It was rewritten from scratch as this RSS reader and renamed.
+The name comes from scrying: looking into a crystal ball to see what's coming.
+The icon is that ball, painted in gold and purple brush strokes.
+
+> This repo used to be `snippefy`, a small PyQt tool for making VS Code
+> snippets. It was rewritten from scratch as this RSS reader and renamed to
+> Scry. Old `github.com/SincerelyAdel/snippefy` links redirect here.
 
 ## Features
 
@@ -46,6 +50,17 @@ suggestions are the Hugging Face blog, arXiv cs.AI, cs.LG and cs.CL, Simon
 Willison, and Lil'Log. Papers with Code shut down in 2025 and Anthropic doesn't
 publish an RSS feed, so neither is listed.
 
+### Getting the APK
+
+This repo doesn't build APKs itself. They come from
+[SincerelyAdel/apk-builder](https://github.com/SincerelyAdel/apk-builder):
+in RepoViewer, open **APKs → Build APK**, pick `SincerelyAdel/Scry`, and leave
+the branch blank to build `main`. Choose **GitHub** as the runner: Scry needs a
+recent Flutter stable, which the GitHub runner installs. The APK is published
+as a release on apk-builder and signed with the same key as every other build,
+so new versions install as updates. The Android package is
+`com.sincerelyadel.scry`.
+
 ### Tests
 
 ```sh
@@ -75,6 +90,9 @@ lib/
   screens/                  home shell, inbox, article detail, feeds, settings
   widgets/                  article tile, add-feed dialog
   utils/                    date parsing, HTML → text, date formatting
+tool/
+  icon/                     the app icon's source SVG and the scripts that
+                            draw it and render every Android and iOS size
 ```
 
 - **State**: `provider` with three `ChangeNotifier`s. `FeedsProvider` and
@@ -115,6 +133,15 @@ lib/
   breaks and bullets kept (`package:html`), rather than rendered as HTML. That
   keeps the reader fast and themeable. Images and links are left out, and
   **Open in browser** shows the original page.
+
+## App icon
+
+The icon is generated, not hand-drawn. `tool/icon/scry_icon.py` paints the
+sphere from many separate brush strokes (seed 11), and
+`tool/icon/render_icons.py` renders it with headless Chrome into the Android
+`mipmap-*` folders and the iOS `AppIcon.appiconset`. See
+[tool/icon/README.md](tool/icon/README.md); a different seed gives a new
+arrangement of strokes.
 
 ## iOS background refresh
 
