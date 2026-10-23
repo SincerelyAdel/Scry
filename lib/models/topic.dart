@@ -16,6 +16,12 @@ enum Topic {
     dark: Color(0xFF5CCFC0),
     light: Color(0xFF1F7F73),
   ),
+  uvm(
+    'UVM',
+    'UVM and verification',
+    dark: Color(0xFF7FB2FF),
+    light: Color(0xFF2F62B8),
+  ),
   claude('Claude', 'Claude', dark: Color(0xFFE48D69), light: Color(0xFFB4532F));
 
   const Topic(
@@ -77,6 +83,11 @@ final _mlFeedWords = RegExp(
   caseSensitive: false,
 );
 
+final _uvmFeedWords = RegExp(
+  r'\buvm|verification|amiq|vlsi ?verify',
+  caseSensitive: false,
+);
+
 final _claudeFeedWords = RegExp(r'anthropic|claude', caseSensitive: false);
 
 /// A first guess at a new feed's tags from its address and title. The user
@@ -95,6 +106,7 @@ Set<Topic> guessTopics(String url, String title) {
   }
   final text = '$title $url';
   if (_claudeFeedWords.hasMatch(text)) return {Topic.claude};
+  if (_uvmFeedWords.hasMatch(text)) return {Topic.uvm, Topic.ic};
   if (_icFeedWords.hasMatch(text)) return {Topic.ic};
   if (_mlFeedWords.hasMatch(text)) return {Topic.ml};
   return {};
@@ -116,12 +128,16 @@ final _articleWords = <Topic, RegExp>{
     r'transistors?|cmos|trainium|inferentia|risc-?v)\b',
     caseSensitive: false,
   ),
+  Topic.uvm: RegExp(
+    r'\b(uvm(?:_\w+)?|uvcs?|universal verification methodology)\b',
+    caseSensitive: false,
+  ),
   Topic.claude: RegExp(r'\b(claude|anthropic)\b', caseSensitive: false),
 };
 
 /// How often a tag's words must appear in an article's text (not its
 /// title) to count; a passing mention doesn't make an article about it.
-const _bodyHits = {Topic.ml: 4, Topic.ic: 4, Topic.claude: 2};
+const _bodyHits = {Topic.ml: 4, Topic.ic: 4, Topic.uvm: 2, Topic.claude: 2};
 
 /// Tags an article earns from its own words: any match in the title, or
 /// several in the text.

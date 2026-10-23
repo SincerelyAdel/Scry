@@ -80,7 +80,22 @@ class InboxScreen extends StatelessWidget {
       );
     }
     if (articles.articles.isEmpty) {
+      final topic = articles.topic;
       return switch (articles.show) {
+        // A tag none of the feeds write about yet.
+        InboxShow.all when topic != null && articles.feedId == null =>
+          EmptyState(
+            icon: Icons.label_outline,
+            title: 'No ${topic.badge} articles yet',
+            message:
+                'Articles get this tag when they talk about it. Add a feed '
+                'that does; the add dialog suggests some.',
+            action: FilledButton.icon(
+              onPressed: () => showAddFeedDialog(context),
+              icon: const Icon(Icons.add),
+              label: const Text('Add feed'),
+            ),
+          ),
         InboxShow.all => const EmptyState(
           icon: Icons.inbox_outlined,
           title: 'Nothing here yet',

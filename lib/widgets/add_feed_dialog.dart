@@ -103,6 +103,13 @@ const suggestedFeeds = <SuggestedFeed>[
     'https://rss.arxiv.org/rss/cs.AR',
     Topic.ic,
   ),
+  // UVM and verification
+  SuggestedFeed(
+    'AMIQ Consulting',
+    'https://www.consulting.amiq.com/feed/',
+    Topic.uvm,
+  ),
+  SuggestedFeed('VLSI Verify', 'https://vlsiverify.com/feed/', Topic.uvm),
 ];
 
 /// Shows the add-feed dialog. Resolves to the new feed, or null if the user

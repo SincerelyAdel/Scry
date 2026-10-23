@@ -22,7 +22,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 8;
+  static const _version = 9;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -194,6 +194,8 @@ class AppDatabase {
         await db.execute('ALTER TABLE novels ADD COLUMN $_notifiedColumn');
       }
     }
+    // Version 9 added the UVM tag; tag existing articles again.
+    if (from >= 4 && from < 9) await _backfillTags(db);
   }
 
   /// Added in version 4: tags from each article's own words.

@@ -21,8 +21,9 @@ The icon is that ball, painted in gold and purple brush strokes.
   advertised feed); RSS 2.0, RSS 1.0 (RDF) and Atom. The feed list shows the
   favicon, topic, article and unread counts, the last update time, and any
   refresh error.
-- **Tags**: **ML** (purple), **IC** (chips and IC design, teal) and
-  **Claude** (clay). A feed can have several, guessed when it's added (from
+- **Tags**: **ML** (purple), **IC** (chips and IC design, teal), **UVM**
+  (UVM and verification, blue; suggested feeds: AMIQ Consulting, VLSI
+  Verify) and **Claude** (clay). A feed can have several, guessed when it's added (from
   arXiv categories and names) and changed from its menu (**Tags**). Each
   article carries its feed's tags plus any its own words earn: a match in
   the title, or several in the text (`tagsInText` in `lib/models/topic.dart`;

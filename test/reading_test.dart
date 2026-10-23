@@ -138,6 +138,26 @@ void main() {
       expect(tagsInText('Notes from Chip Huyen', ''), isEmpty);
     });
 
+    test('UVM articles and feeds get the UVM tag', () {
+      expect(tagsInText('Development of a Reusable AXI-Lite UVC', ''), {
+        Topic.uvm,
+      });
+      expect(tagsInText('UVM Sequences explained', ''), {Topic.uvm});
+      expect(
+        tagsInText('A post', 'Extend uvm_sequence_item, then uvm_driver.'),
+        {Topic.uvm},
+      );
+      expect(tagsInText('A post', 'One UVM mention only.'), isEmpty);
+      expect(
+        guessTopics('https://www.consulting.amiq.com/feed/', 'AMIQ Consulting'),
+        {Topic.uvm, Topic.ic},
+      );
+      expect(guessTopics('https://vlsiverify.com/feed/', 'VLSI Verify'), {
+        Topic.uvm,
+        Topic.ic,
+      });
+    });
+
     test('tag lists round-trip in a fixed order', () {
       expect(topicsToString({Topic.claude, Topic.ml}), 'ml,claude');
       expect(topicsFromString('claude,ml,nope'), {Topic.ml, Topic.claude});
