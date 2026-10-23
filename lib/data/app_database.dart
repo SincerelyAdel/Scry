@@ -5,7 +5,11 @@ import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
 import '../models/paper_figure.dart';
+import '../models/topic.dart';
+import '../utils/arxiv.dart';
+import '../utils/html_text.dart';
 import '../utils/images.dart';
+import '../utils/readable.dart';
 
 /// Thin wrapper over the SQLite database holding feeds and articles.
 ///
@@ -16,7 +20,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 2;
+  static const _version = 3;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -51,7 +55,8 @@ class AppDatabase {
         lastUpdated INTEGER,
         syncStatus TEXT NOT NULL DEFAULT 'never',
         lastError TEXT,
-        favicon BLOB
+        favicon BLOB,
+        topic TEXT
       )
     ''');
     // isDeleted hides an article the user swiped away while keeping its guid
@@ -71,6 +76,7 @@ class AppDatabase {
         isDeleted INTEGER NOT NULL DEFAULT 0,
         addedDate INTEGER NOT NULL,
         $_imageColumns,
+        $_textColumns,
         UNIQUE (feedId, guid)
       )
     ''');
@@ -88,6 +94,12 @@ class AppDatabase {
         figures TEXT,
         figuresState INTEGER NOT NULL DEFAULT 0''';
 
+  /// Added in version 3: the body's length for read-time badges, and the
+  /// article's text from its web page when the feed only sends a teaser.
+  static const _textColumns = '''
+        wordCount INTEGER NOT NULL DEFAULT 0,
+        fullContent TEXT''';
+
   static Future<void> _upgrade(Database db, int from, int to) async {
     if (from < 2) {
       for (final column in _imageColumns.split(',')) {
@@ -95,6 +107,62 @@ class AppDatabase {
       }
       await _backfillImages(db);
     }
+    if (from < 3) {
+      await db.execute('ALTER TABLE feeds ADD COLUMN topic TEXT');
+      for (final column in _textColumns.split(',')) {
+        await db.execute('ALTER TABLE articles ADD COLUMN ${column.trim()}');
+      }
+      await _backfillTopicsAndLengths(db);
+    }
+  }
+
+  /// Guesses topics for existing feeds and measures existing articles.
+  /// Teasers that were already checked for a picture are checked again, so
+  /// their full text gets fetched too.
+  static Future<void> _backfillTopicsAndLengths(Database db) async {
+    final batch = db.batch();
+    for (final feed in await db.query(
+      'feeds',
+      columns: ['id', 'url', 'title'],
+    )) {
+      final topic = guessTopic(feed['url'] as String, feed['title'] as String);
+      if (topic != null) {
+        batch.update(
+          'feeds',
+          {'topic': topic.name},
+          where: 'id = ?',
+          whereArgs: [feed['id']],
+        );
+      }
+    }
+    final rows = await db.query(
+      'articles',
+      columns: ['id', 'guid', 'url', 'summary', 'content'],
+    );
+    for (final row in rows) {
+      final words = bodyWordCount(
+        row['content'] as String?,
+        row['summary'] as String?,
+      );
+      final url = row['url'] as String?;
+      final teaser =
+          words < minArticleWords &&
+          url != null &&
+          arxivId(url, row['guid'] as String?) == null;
+      batch.update(
+        'articles',
+        {'wordCount': words, if (teaser) 'imageChecked': 0},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Words in a feed item's body: its content, else its summary.
+  static int bodyWordCount(String? content, String? summary) {
+    final body = (content?.trim().isNotEmpty ?? false) ? content : summary;
+    return countWords(htmlToPlainText(body));
   }
 
   /// Gives articles stored before version 2 the first image in their body.
@@ -194,6 +262,7 @@ class AppDatabase {
     ArticleSort sort = ArticleSort.newest,
     bool unreadOnly = false,
     int? feedId,
+    Topic? topic,
     int limit = 100,
     int offset = 0,
   }) async {
@@ -210,11 +279,15 @@ class AppDatabase {
       where.add('a.feedId = ?');
       args.add(feedId);
     }
+    if (topic != null) {
+      where.add('f.topic = ?');
+      args.add(topic.name);
+    }
     final rows = await _db.rawQuery(
       '''
       SELECT a.id, a.feedId, a.guid, a.title, a.author, a.url, a.pubDate,
-             a.isRead, a.addedDate, a.imageUrl, a.imageChecked,
-             f.title AS feedTitle
+             a.isRead, a.addedDate, a.imageUrl, a.imageChecked, a.wordCount,
+             f.title AS feedTitle, f.topic AS feedTopic
       FROM articles a
       JOIN feeds f ON f.id = a.feedId
       WHERE ${where.join(' AND ')}
@@ -230,7 +303,7 @@ class AppDatabase {
   Future<Article?> getArticle(int id) async {
     final rows = await _db.rawQuery(
       '''
-      SELECT a.*, f.title AS feedTitle
+      SELECT a.*, f.title AS feedTitle, f.topic AS feedTopic
       FROM articles a
       JOIN feeds f ON f.id = a.feedId
       WHERE a.id = ?
@@ -263,6 +336,26 @@ class AppDatabase {
       {'imageUrl': ?imageUrl, 'imageChecked': 1},
       where: 'id = ?',
       whereArgs: [articleId],
+    );
+  }
+
+  /// Stores an article's text from its web page and its new length.
+  Future<void> saveFullText(int articleId, String html, int wordCount) async {
+    await _db.update(
+      'articles',
+      {'fullContent': html, 'wordCount': wordCount},
+      where: 'id = ?',
+      whereArgs: [articleId],
+    );
+  }
+
+  /// Sets a feed's topic, or clears it with null.
+  Future<void> setFeedTopic(int feedId, Topic? topic) async {
+    await _db.update(
+      'feeds',
+      {'topic': topic?.name},
+      where: 'id = ?',
+      whereArgs: [feedId],
     );
   }
 

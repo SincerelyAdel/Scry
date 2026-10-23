@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/feed.dart';
+import '../models/topic.dart';
 import '../state/feeds_provider.dart';
 import '../utils/format.dart';
 import '../theme.dart';
@@ -121,6 +122,10 @@ class _FeedTile extends StatelessWidget {
                   ),
                 ),
               ),
+              if (feed.topic != null) ...[
+                const SizedBox(width: 8),
+                Tag.topic(context, feed.topic!),
+              ],
               if (feed.unreadCount > 0) _UnreadPill(feed.unreadCount),
               PopupMenuButton<_FeedAction>(
                 icon: Icon(Icons.more_horiz, color: c.muted, size: 20),
@@ -131,6 +136,7 @@ class _FeedTile extends StatelessWidget {
                     value: _FeedAction.refresh,
                     child: Text('Refresh'),
                   ),
+                  PopupMenuItem(value: _FeedAction.topic, child: Text('Topic')),
                   PopupMenuItem(
                     value: _FeedAction.copyUrl,
                     child: Text('Copy URL'),
@@ -182,6 +188,37 @@ class _FeedTile extends StatelessWidget {
             ),
           ),
         );
+      case _FeedAction.topic:
+        final choice = await showDialog<_TopicChoice>(
+          context: context,
+          builder: (context) => SimpleDialog(
+            title: Text('What is ${feed.title} about?'),
+            children: [
+              for (final topic in [...Topic.values, null])
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, _TopicChoice(topic)),
+                  child: Row(
+                    children: [
+                      Icon(
+                        feed.topic == topic
+                            ? Icons.radio_button_checked
+                            : Icons.radio_button_unchecked,
+                        size: 20,
+                        color: topic == null
+                            ? context.palette.muted
+                            : topicColor(context, topic),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(topic?.label ?? 'No topic'),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+        if (choice != null && choice.topic != feed.topic) {
+          await provider.setTopic(feed, choice.topic);
+        }
       case _FeedAction.copyUrl:
         await Clipboard.setData(ClipboardData(text: feed.url));
         messenger.showSnackBar(
@@ -212,7 +249,14 @@ class _FeedTile extends StatelessWidget {
   }
 }
 
-enum _FeedAction { refresh, copyUrl, delete }
+enum _FeedAction { refresh, topic, copyUrl, delete }
+
+/// A picked topic, so "no topic" can be told apart from a dismissed dialog.
+class _TopicChoice {
+  const _TopicChoice(this.topic);
+
+  final Topic? topic;
+}
 
 /// Gold count of unread articles.
 class _UnreadPill extends StatelessWidget {

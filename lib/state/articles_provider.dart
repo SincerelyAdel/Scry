@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../data/feed_repository.dart';
 import '../models/article.dart';
 import '../models/article_sort.dart';
+import '../models/topic.dart';
 
 /// The unified inbox: every subscribed feed's articles in one paged list.
 class ArticlesProvider extends ChangeNotifier {
@@ -21,6 +22,7 @@ class ArticlesProvider extends ChangeNotifier {
   ArticleSort _sort;
   bool _unreadOnly = false;
   int? _feedId;
+  Topic? _topic;
   String? _feedTitle;
   bool _loading = false;
   bool _loaded = false;
@@ -33,6 +35,9 @@ class ArticlesProvider extends ChangeNotifier {
   List<Article> get articles => _articles;
   ArticleSort get sort => _sort;
   bool get unreadOnly => _unreadOnly;
+
+  /// When set, the inbox shows only feeds about this topic.
+  Topic? get topic => _topic;
 
   /// When set, the inbox shows a single feed.
   int? get feedId => _feedId;
@@ -84,6 +89,13 @@ class ArticlesProvider extends ChangeNotifier {
   void setUnreadOnly(bool value) {
     if (value == _unreadOnly) return;
     _unreadOnly = value;
+    _articles = const [];
+    reload();
+  }
+
+  void showTopic(Topic? topic) {
+    if (topic == _topic) return;
+    _topic = topic;
     _articles = const [];
     reload();
   }
@@ -141,6 +153,8 @@ class ArticlesProvider extends ChangeNotifier {
       sort: _sort,
       unreadOnly: _unreadOnly,
       feedId: _feedId,
+      // One feed's list shows all of it, whatever topic is picked.
+      topic: _feedId == null ? _topic : null,
       limit: limit,
       offset: offset,
     );

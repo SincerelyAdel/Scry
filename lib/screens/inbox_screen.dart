@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/article.dart';
 import '../models/article_sort.dart';
+import '../models/topic.dart';
 import '../state/articles_provider.dart';
 import '../state/feeds_provider.dart';
 import '../state/settings_provider.dart';
@@ -62,12 +63,12 @@ class InboxScreen extends StatelessWidget {
                 : () => articles.markAllRead(),
           ),
         ],
-        bottom: feeds.refreshing
-            ? const PreferredSize(
-                preferredSize: Size.fromHeight(2),
-                child: LinearProgressIndicator(minHeight: 2),
-              )
-            : null,
+        bottom: _TopicBar(
+          show:
+              articles.feedId == null &&
+              feeds.feeds.any((f) => f.topic != null),
+          refreshing: feeds.refreshing,
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () => _refresh(context),
@@ -226,6 +227,65 @@ class _SwipeableArticle extends StatelessWidget {
           child: Icon(icon, color: foreground),
         ),
       ),
+    );
+  }
+}
+
+/// "All · ML · IC" chips under the inbox title, plus the refresh bar.
+class _TopicBar extends StatelessWidget implements PreferredSizeWidget {
+  const _TopicBar({required this.show, required this.refreshing});
+
+  final bool show;
+  final bool refreshing;
+
+  @override
+  Size get preferredSize => Size.fromHeight((show ? 48 : 0) + 2);
+
+  @override
+  Widget build(BuildContext context) {
+    final articles = context.watch<ArticlesProvider>();
+    final pad = pagePadding(context);
+    Widget chip(String label, Topic? topic) {
+      final selected = articles.topic == topic;
+      final color = topic == null ? null : topicColor(context, topic);
+      return Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: ChoiceChip(
+          label: Text(label),
+          selected: selected,
+          showCheckmark: false,
+          labelStyle: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: selected ? null : color,
+          ),
+          selectedColor: color?.withValues(alpha: 0.28),
+          onSelected: (_) => articles.showTopic(topic),
+        ),
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (show)
+          SizedBox(
+            height: 48,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: EdgeInsets.fromLTRB(pad, 4, pad, 8),
+              children: [
+                chip('All', null),
+                for (final topic in Topic.values) chip(topic.badge, topic),
+              ],
+            ),
+          ),
+        SizedBox(
+          height: 2,
+          child: refreshing
+              ? const LinearProgressIndicator(minHeight: 2)
+              : null,
+        ),
+      ],
     );
   }
 }

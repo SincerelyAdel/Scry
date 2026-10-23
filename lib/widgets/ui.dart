@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
+import '../models/topic.dart';
 import '../theme.dart';
 
 /// A RepoViewer-style card: surface fill, hairline border, rounded corners.
@@ -190,4 +191,76 @@ class FeedAvatar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Colour of a topic's badge: purple for ML, teal for IC.
+Color topicColor(BuildContext context, Topic topic) {
+  final dark = context.palette.isDark;
+  return switch (topic) {
+    Topic.ml => dark ? const Color(0xFFB39DFF) : const Color(0xFF6A4FC4),
+    Topic.ic => dark ? const Color(0xFF5CCFC0) : const Color(0xFF1F7F73),
+  };
+}
+
+/// A small rounded label: a feed's topic, "Paper", a read time.
+class Tag extends StatelessWidget {
+  const Tag(this.label, {super.key, this.icon, this.color});
+
+  /// A topic's badge in its colour.
+  factory Tag.topic(BuildContext context, Topic topic) =>
+      Tag(topic.badge, color: topicColor(context, topic));
+
+  final String label;
+  final IconData? icon;
+
+  /// Tints the label; plain grey when null.
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final fg = color ?? c.muted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color == null ? c.surfaceAlt : fg.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: fg),
+            const SizedBox(width: 3),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 11,
+              height: 1.3,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Badges for an article: its feed's topic, "Paper" for arXiv papers, and
+/// the read time once the full text is known.
+List<Widget> articleTags(
+  BuildContext context, {
+  required Topic? topic,
+  required bool paper,
+  required int? readMinutes,
+}) {
+  return [
+    if (topic != null) Tag.topic(context, topic),
+    if (paper) const Tag('Paper', icon: Icons.description_outlined),
+    if (!paper && readMinutes != null)
+      Tag('$readMinutes min', icon: Icons.schedule),
+  ];
 }

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/feed_repository.dart';
 import '../models/feed.dart';
+import '../models/topic.dart';
 
 /// Subscribed feeds plus add/remove/refresh actions.
 class FeedsProvider extends ChangeNotifier {
@@ -29,11 +30,18 @@ class FeedsProvider extends ChangeNotifier {
 
   /// Throws on failure (bad URL, network error, not a feed, duplicate) with
   /// a message suitable for the UI.
-  Future<Feed> addFeed(String url) async {
-    final feed = await _repo.addFeed(url);
+  Future<Feed> addFeed(String url, {Topic? topic}) async {
+    final feed = await _repo.addFeed(url, topic: topic);
     await load();
     onLibraryChanged?.call();
     return feed;
+  }
+
+  /// Changes what [feed] is about; the inbox reloads for the new badges.
+  Future<void> setTopic(Feed feed, Topic? topic) async {
+    await _repo.setFeedTopic(feed.id!, topic);
+    await load();
+    onLibraryChanged?.call();
   }
 
   Future<void> deleteFeed(Feed feed) async {

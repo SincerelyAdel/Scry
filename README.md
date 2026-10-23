@@ -18,8 +18,14 @@ The icon is that ball, painted in gold and purple brush strokes.
 
 - **Feeds**: add by feed URL *or* by a site's homepage (the app finds the
   advertised feed); RSS 2.0, RSS 1.0 (RDF) and Atom. The feed list shows the
-  favicon, article and unread counts, the last update time, and any refresh
-  error.
+  favicon, topic, article and unread counts, the last update time, and any
+  refresh error.
+- **Topics**: each feed is about machine learning (**ML**, purple) or chips
+  and IC design (**IC**, teal). The topic is guessed when a feed is added
+  (from arXiv categories and names) and can be changed from the feed's menu.
+  Chips at the top of the inbox show one topic at a time.
+- **Badges**: inbox cards and the reader show the feed's topic, **Paper** for
+  arXiv papers, and the read time once the article's length is known.
 - **Unified inbox**: every feed's articles merged into one list, newest first,
   with unread dots. Sort by date, by feed, or unread first; show only unread
   articles; tap a feed to see only its articles.
@@ -31,8 +37,13 @@ The icon is that ball, painted in gold and purple brush strokes.
   papers the first figure. Lookups run in the background as cards scroll
   into view, read only the start of each page, and are stored, so each
   article is checked once.
-- **Reader**: title, author, date, feed, and the body (full content when the
-  feed includes it, otherwise the summary), shown with its formatting:
+- **Full text**: many feeds send only a teaser or a link. For those, Scry
+  downloads the article's page and keeps just the article (reader mode:
+  menus, share buttons, comments and sidebars are dropped), in the
+  background as cards scroll into view, or when the article is opened.
+- **Reader**: title, author, date, feed, badges, and the body (the fetched
+  full text, else the feed's content, else its summary), shown with its
+  formatting:
   headings, links, lists, quotes, code, tables and images. Tap an image to
   zoom. Text is selectable. Buttons to open in the browser, share, and mark
   read or unread. Opening an article marks it read.
@@ -40,7 +51,8 @@ The icon is that ball, painted in gold and purple brush strokes.
   PDF button, the abstract on its own, and a **Figures** section with every
   figure and caption from the paper's HTML version on arXiv. Papers without
   an HTML version point to the PDF.
-- **Offline**: feeds, articles, read state and fetched figures live in
+- **Offline**: feeds, articles, read state, fetched full text and figures
+  live in
   SQLite, and images are cached on disk, so anything opened once is
   readable without a connection.
 - **Customization**: dark (default), light or system theme, switchable from
@@ -58,9 +70,18 @@ flutter run
 ```
 
 Tap **Add feed** and pick a suggestion, or paste any feed or blog URL. The
-suggestions are the Hugging Face blog, arXiv cs.AI, cs.LG and cs.CL, Simon
-Willison, and Lil'Log. Papers with Code shut down in 2025 and Anthropic doesn't
-publish an RSS feed, so neither is listed.
+suggestions are grouped by topic and chosen for long reads:
+
+- **ML**: Ahead of AI (Sebastian Raschka), Interconnects, Import AI, Berkeley
+  AI Research, Google Research, Google DeepMind, Eugene Yan, Lil'Log, Chip
+  Huyen, Jay Alammar, MIT News (machine learning), the Hugging Face blog, and
+  arXiv cs.LG, cs.CL, cs.AI and stat.ML.
+- **IC**: SemiAnalysis, Semiconductor Engineering, Chips and Cheese, The Chip
+  Letter, Fabricated Knowledge, IEEE Spectrum (semiconductors), SemiWiki,
+  Electronics Weekly, and arXiv cs.AR (hardware architecture).
+
+Papers with Code shut down in 2025 and Anthropic doesn't publish an RSS feed,
+so neither is listed.
 
 ### Getting the APK
 
@@ -90,7 +111,7 @@ macOS already has it). CI runs format, analyze and tests on every push.
 lib/
   main.dart                 opens prefs + DB, schedules background sync
   app.dart                  Provider wiring, Material 3 themes
-  models/                   Feed, Article, ArticleSort
+  models/                   Feed, Article, ArticleSort, Topic
   data/
     app_database.dart       sqflite schema and every SQL query
     feed_repository.dart    fetch → parse → store; used by the UI and the worker
@@ -104,7 +125,8 @@ lib/
   widgets/                  article tile, add-feed dialog, HTML renderer,
                             cached images with a zoomable viewer
   utils/                    date parsing, HTML → text, date formatting,
-                            arXiv (summaries, figures), finding page images
+                            arXiv (summaries, figures), finding page images,
+                            reader mode (an article out of its web page)
 tool/
   icon/                     the app icon's source SVG and the scripts that
                             draw it and render every Android and iOS size
@@ -134,14 +156,16 @@ tool/
 | syncStatus | never / ok / error | url | text? |
 | lastError | text? | pubDate | epoch ms? |
 | favicon | blob? | summary | text? (HTML) |
-| | | content | text? (HTML) |
+| topic | ml / ic / null | content | text? (HTML) |
 | | | isRead | 0/1 |
 | | | isDeleted | 0/1 |
 | | | addedDate | epoch ms |
 | | | imageUrl | text? (sample picture) |
-| | | imageChecked | 0/1 (page looked at) |
+| | | imageChecked | 0/1 (page looked at for a picture and full text) |
 | | | figures | text? (JSON, arXiv) |
 | | | figuresState | 0 unknown / 1 found / 2 no HTML |
+| | | wordCount | int (best body's length) |
+| | | fullContent | text? (HTML from the web page) |
 
 ### Package notes
 
@@ -177,6 +201,5 @@ pull-to-refresh, and the sync setting is greyed out.
 
 - Search and keyword filters
 - OPML import/export and backup
-- Read-time estimates
 - Auto-tagging articles by category with a local LLM
 - Pruning very old articles

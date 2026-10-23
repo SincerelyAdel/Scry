@@ -1,14 +1,18 @@
 import 'dart:async';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
 import '../models/paper_figure.dart';
+import '../models/topic.dart';
 import '../services/feed_fetcher.dart';
 import '../services/feed_parser.dart';
 import '../utils/arxiv.dart';
+import '../utils/html_text.dart';
 import '../utils/images.dart';
+import '../utils/readable.dart';
 import 'app_database.dart';
 
 class DuplicateFeedException implements Exception {
@@ -31,6 +35,16 @@ class RefreshResult {
   bool get ok => error == null;
 }
 
+/// What looking at an article's web page found.
+class PageCheck {
+  const PageCheck({this.imageUrl, this.wordCount});
+
+  final String? imageUrl;
+
+  /// The article's new length when its full text was fetched.
+  final int? wordCount;
+}
+
 /// Ties fetching, parsing and storage together. The UI and the background
 /// worker both go through this class.
 class FeedRepository {
@@ -48,7 +62,8 @@ class FeedRepository {
 
   /// Subscribes to the feed at [input], which may be a feed URL or a web
   /// page that links to one. Fetches and stores its articles straight away.
-  Future<Feed> addFeed(String input) async {
+  /// The feed's [topic] is guessed when not given.
+  Future<Feed> addFeed(String input, {Topic? topic}) async {
     final url = normalizeUrl(input);
     await _ensureNotSubscribed(url);
 
@@ -76,6 +91,7 @@ class FeedRepository {
       lastUpdated: DateTime.now(),
       syncStatus: SyncStatus.ok,
       favicon: await _fetchFavicon(parsed.siteUrl ?? feedUrl),
+      topic: topic ?? guessTopic(feedUrl, parsed.title),
     );
     final id = await _db.insertFeed(feed);
     await _storeItems(id, parsed.items);
@@ -83,6 +99,9 @@ class FeedRepository {
   }
 
   Future<void> deleteFeed(int feedId) => _db.deleteFeed(feedId);
+
+  Future<void> setFeedTopic(int feedId, Topic? topic) =>
+      _db.setFeedTopic(feedId, topic);
 
   Future<RefreshResult> refreshFeed(Feed feed) async {
     try {
@@ -100,6 +119,7 @@ class FeedRepository {
         favicon:
             feed.favicon ??
             await _fetchFavicon(parsed.siteUrl ?? feed.siteUrl ?? feed.url),
+        topic: feed.topic,
       );
       await _db.updateFeed(updated);
       return RefreshResult(feed: updated, newArticles: added);
@@ -113,6 +133,7 @@ class FeedRepository {
         syncStatus: SyncStatus.error,
         lastError: e.toString(),
         favicon: feed.favicon,
+        topic: feed.topic,
       );
       await _db.updateFeed(failed);
       return RefreshResult(feed: failed, error: e.toString());
@@ -140,6 +161,7 @@ class FeedRepository {
     ArticleSort sort = ArticleSort.newest,
     bool unreadOnly = false,
     int? feedId,
+    Topic? topic,
     int limit = 100,
     int offset = 0,
   }) {
@@ -147,6 +169,7 @@ class FeedRepository {
       sort: sort,
       unreadOnly: unreadOnly,
       feedId: feedId,
+      topic: topic,
       limit: limit,
       offset: offset,
     );
@@ -167,25 +190,54 @@ class FeedRepository {
 
   // --------------------------------------------------------------- images
 
+  /// Whether the feed sent only a teaser of an article that has a web page
+  /// to read the rest from. arXiv papers are handled separately.
+  static bool isTeaser(Article article) =>
+      article.wordCount < minArticleWords &&
+      article.url != null &&
+      arxivId(article.url, article.guid) == null;
+
   /// Finds a picture for an article whose feed didn't supply one: the first
-  /// figure for an arXiv paper, otherwise its page's preview image. Only
-  /// the start of the page is downloaded. The result is stored, including
-  /// "none", so each article is checked once. Network failures aren't
-  /// stored, so they're retried later.
-  Future<String?> findImage(Article article) async {
-    if (article.imageUrl != null) return article.imageUrl;
+  /// figure for an arXiv paper, otherwise its page's preview image. For a
+  /// teaser, the whole page is downloaded and the article's text taken from
+  /// it as well; otherwise only the start of the page is read. Results are
+  /// stored, including "none", so each article is checked once. Network
+  /// failures aren't stored, so they're retried later.
+  Future<PageCheck> checkPage(Article article) async {
     final id = article.id!;
     final paper = arxivId(article.url, article.guid);
-    String? image;
+    var image = article.imageUrl;
+    int? words;
     try {
       if (paper != null) {
+        if (image == null) {
+          final page = await _fetcher.fetchPrefix(
+            arxivHtmlUrl(paper),
+            maxBytes: 600 * 1024,
+            done: (text) => text.contains('ltx_graphics'),
+          );
+          image = arxivFirstFigure(page.body, pageUrl: page.url);
+        }
+      } else if (isTeaser(article)) {
         final page = await _fetcher.fetchPrefix(
-          arxivHtmlUrl(paper),
-          maxBytes: 600 * 1024,
-          done: (text) => text.contains('ltx_graphics'),
+          article.url!,
+          maxBytes: 3 * 1024 * 1024,
         );
-        image = arxivFirstFigure(page.body, pageUrl: page.url);
-      } else if (article.url != null) {
+        final (preview, text) = await Isolate.run(
+          () => (
+            pagePreviewImage(page.body, pageUrl: page.url),
+            extractArticle(page.body, pageUrl: page.url),
+          ),
+        );
+        image ??= preview;
+        if (text != null) {
+          final count = countWords(htmlToPlainText(text));
+          if (count > article.wordCount) {
+            await _db.saveFullText(id, text, count);
+            words = count;
+          }
+        }
+      } else if (image == null && article.url != null) {
         final page = await _fetcher.fetchPrefix(
           article.url!,
           done: pagePreviewFound,
@@ -194,11 +246,17 @@ class FeedRepository {
       }
     } on FetchException catch (e) {
       // Missing pages won't appear later; anything else might.
-      if (e.statusCode == null || e.statusCode! >= 500) return null;
+      if (e.statusCode == null || e.statusCode! >= 500) {
+        return PageCheck(imageUrl: article.imageUrl);
+      }
     }
     await _db.setArticleImage(id, image);
-    return image;
+    return PageCheck(imageUrl: image, wordCount: words);
   }
+
+  /// The article's picture; see [checkPage].
+  Future<String?> findImage(Article article) async =>
+      (await checkPage(article)).imageUrl;
 
   /// A paper's figures, from storage or else from its arXiv HTML version.
   /// Throws [FetchException] when offline and nothing is stored yet.
@@ -273,6 +331,7 @@ class FeedRepository {
           summary: item.summary,
           content: item.content,
           imageUrl: item.imageUrl,
+          wordCount: AppDatabase.bodyWordCount(item.content, item.summary),
           addedDate: now,
         ),
     ];

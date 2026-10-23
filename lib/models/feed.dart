@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 
+import 'topic.dart';
+
 /// Outcome of the most recent attempt to fetch a feed.
 enum SyncStatus { never, ok, error }
 
@@ -14,6 +16,7 @@ class Feed {
     this.syncStatus = SyncStatus.never,
     this.lastError,
     this.favicon,
+    this.topic,
     this.articleCount = 0,
     this.unreadCount = 0,
   });
@@ -32,6 +35,9 @@ class Feed {
   final String? lastError;
   final Uint8List? favicon;
 
+  /// What the feed is about, for badges and the inbox filter.
+  final Topic? topic;
+
   /// Derived counts, filled in by list queries. Not stored on the row.
   final int articleCount;
   final int unreadCount;
@@ -48,6 +54,7 @@ class Feed {
       ),
       lastError: map['lastError'] as String?,
       favicon: map['favicon'] as Uint8List?,
+      topic: Topic.fromName(map['topic'] as String?),
       articleCount: (map['articleCount'] as int?) ?? 0,
       unreadCount: (map['unreadCount'] as int?) ?? 0,
     );
@@ -64,6 +71,7 @@ class Feed {
       'syncStatus': syncStatus.name,
       'lastError': lastError,
       'favicon': favicon,
+      'topic': topic?.name,
     };
   }
 }

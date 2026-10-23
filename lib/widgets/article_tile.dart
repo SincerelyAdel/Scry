@@ -4,11 +4,12 @@ import 'package:provider/provider.dart';
 import '../models/article.dart';
 import '../state/article_images.dart';
 import '../theme.dart';
+import '../utils/arxiv.dart';
 import '../utils/format.dart';
 import 'net_image.dart';
 import 'ui.dart';
 
-/// One inbox card: feed name, title, author and date, with a sample image
+/// One inbox card: feed name, title, badges, author and date, with a sample image
 /// on the right when the article has one. Unread articles get a gold dot
 /// and a gold edge; read ones are dimmed.
 class ArticleTile extends StatelessWidget {
@@ -35,6 +36,15 @@ class ArticleTile extends StatelessWidget {
     );
     final looking = context.select<ArticleImages, bool>(
       (i) => i.isLooking(article),
+    );
+    final words = context.select<ArticleImages, int>(
+      (i) => i.wordCountFor(article),
+    );
+    final tags = articleTags(
+      context,
+      topic: article.feedTopic,
+      paper: arxivId(article.url, article.guid) != null,
+      readMinutes: readMinutesFor(words),
     );
     final wide = MediaQuery.sizeOf(context).width > 700;
     final thumbW = wide ? 176.0 : 96.0;
@@ -93,11 +103,22 @@ class ArticleTile extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          meta,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: c.faint, fontSize: 12),
+        Row(
+          children: [
+            for (final tag in tags) ...[
+              Opacity(opacity: unread ? 1 : 0.6, child: tag),
+              const SizedBox(width: 6),
+            ],
+            if (tags.isNotEmpty) const SizedBox(width: 2),
+            Expanded(
+              child: Text(
+                meta,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: c.faint, fontSize: 12),
+              ),
+            ),
+          ],
         ),
       ],
     );

@@ -3,8 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../data/feed_repository.dart';
 import '../models/article.dart';
 
-/// Finds pictures for inbox articles whose feed didn't include one, as
-/// they scroll into view. A few lookups run at once, newest request first,
+/// Finds pictures for inbox articles whose feed didn't include one, and the
+/// full text of teasers, as they scroll into view. A few lookups run at once, newest request first,
 /// so what's on screen comes before what was scrolled past.
 class ArticleImages extends ChangeNotifier {
   ArticleImages(this._repo);
@@ -15,6 +15,9 @@ class ArticleImages extends ChangeNotifier {
 
   /// Results found this session, by article id (null = none).
   final Map<int, String?> _found = {};
+
+  /// New lengths of articles whose full text was fetched this session.
+  final Map<int, int> _words = {};
   final Set<int> _pending = {};
   final List<Article> _queue = [];
   int _running = 0;
@@ -22,6 +25,9 @@ class ArticleImages extends ChangeNotifier {
   /// The article's picture, if known.
   String? imageFor(Article article) =>
       _found.containsKey(article.id) ? _found[article.id] : article.imageUrl;
+
+  /// The article's length, including full text fetched this session.
+  int wordCountFor(Article article) => _words[article.id] ?? article.wordCount;
 
   /// Whether a lookup for the article is queued or running.
   bool isLooking(Article article) => _pending.contains(article.id);
@@ -31,8 +37,8 @@ class ArticleImages extends ChangeNotifier {
   void request(Article article) {
     final id = article.id;
     if (id == null ||
-        article.imageUrl != null ||
         article.imageChecked ||
+        (article.imageUrl != null && !FeedRepository.isTeaser(article)) ||
         _found.containsKey(id) ||
         _pending.contains(id)) {
       return;
@@ -47,8 +53,13 @@ class ArticleImages extends ChangeNotifier {
       final article = _queue.removeLast();
       _running++;
       _repo
-          .findImage(article)
-          .then((image) => _found[article.id!] = image, onError: (Object _) {})
+          .checkPage(article)
+          .then((check) {
+            _found[article.id!] = check.imageUrl;
+            if (check.wordCount != null) {
+              _words[article.id!] = check.wordCount!;
+            }
+          }, onError: (Object _) {})
           .whenComplete(() {
             _running--;
             _pending.remove(article.id);

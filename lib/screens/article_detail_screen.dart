@@ -42,6 +42,9 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
 
   bool _loading = true;
 
+  /// Fetching the rest of a teaser from its web page.
+  bool _fetchingFull = false;
+
   // Figures, for arXiv papers.
   bool _figuresLoading = false;
   String? _figuresError;
@@ -63,14 +66,46 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
       _article = full;
       _paperId = arxivId(full.url, full.guid);
       _arxiv = parseArxivSummary(htmlToPlainText(full.summary));
-      // Prefer the full content; many feeds only send a summary.
-      final content = full.content?.trim() ?? '';
-      _html = content.isNotEmpty ? content : full.summary;
-      if (htmlToPlainText(_html).isEmpty) _html = null;
+      _pickBody();
     }
     setState(() => _loading = false);
     if (_paperId != null) _loadFigures();
+    if (full != null &&
+        full.fullContent == null &&
+        !full.imageChecked &&
+        FeedRepository.isTeaser(full)) {
+      _fetchFullText();
+    }
     if (!_article.isRead) await _setRead(articles, true);
+  }
+
+  /// The best body: the page's text when it was fetched, else the feed's
+  /// full content, else its summary.
+  void _pickBody() {
+    final content = _article.content?.trim() ?? '';
+    _html =
+        _article.fullContent ??
+        (content.isNotEmpty ? content : _article.summary);
+    if (htmlToPlainText(_html).isEmpty) _html = null;
+  }
+
+  /// Reads the rest of a teaser from its web page.
+  Future<void> _fetchFullText() async {
+    final repo = context.read<FeedRepository>();
+    setState(() => _fetchingFull = true);
+    try {
+      await repo.checkPage(_article);
+      final full = await repo.getArticle(_article.id!);
+      if (!mounted || full == null) return;
+      setState(() {
+        _article = full.copyWith(isRead: _article.isRead);
+        _pickBody();
+      });
+    } catch (_) {
+      // Offline: the teaser stays, and Open in browser still works.
+    } finally {
+      if (mounted) setState(() => _fetchingFull = false);
+    }
   }
 
   Future<void> _loadFigures() async {
@@ -214,6 +249,19 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
               ].join(' · '),
               style: TextStyle(color: c.muted, fontSize: 14),
             ),
+            if (!_loading) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: articleTags(
+                  context,
+                  topic: _article.feedTopic,
+                  paper: _paperId != null,
+                  readMinutes: _article.readMinutes,
+                ),
+              ),
+            ],
             const SizedBox(height: 20),
             Divider(color: c.border),
             const SizedBox(height: 20),
@@ -223,7 +271,29 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
               ..._paper(c, fontSize)
             else ...[
               ..._leadImage(),
-              if (_html == null)
+              if (_fetchingFull) ...[
+                Row(
+                  children: [
+                    const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Fetching the full article...',
+                      style: TextStyle(
+                        fontFamily: kSerif,
+                        fontStyle: FontStyle.italic,
+                        color: c.muted,
+                        fontSize: fontSize * 0.9,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
+              if (_html == null && !_fetchingFull)
                 Text(
                   'This feed only provides a link for this article.',
                   style: TextStyle(
@@ -233,7 +303,7 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                     fontSize: fontSize,
                   ),
                 )
-              else
+              else if (_html != null)
                 HtmlView(
                   html: _html!,
                   baseUrl: _article.url,
