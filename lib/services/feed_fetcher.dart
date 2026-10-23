@@ -20,13 +20,25 @@ abstract class FeedFetcher {
 
   /// Returns null on any failure; used for best-effort extras like favicons.
   Future<Uint8List?> fetchBytes(String url);
+
+  /// Downloads the start of a page, stopping once [done] says the text so
+  /// far is enough, or after [maxBytes]. For finding a page's preview image
+  /// without downloading all of it.
+  Future<FetchedDocument> fetchPrefix(
+    String url, {
+    int maxBytes = 400 * 1024,
+    bool Function(String textSoFar)? done,
+  });
 }
 
 /// Thrown for network failures, with a message fit to show the user.
 class FetchException implements Exception {
-  FetchException(this.message);
+  FetchException(this.message, {this.statusCode});
 
   final String message;
+
+  /// The HTTP status, when the server answered with an error.
+  final int? statusCode;
 
   @override
   String toString() => message;
@@ -68,7 +80,48 @@ class DioFeedFetcher implements FeedFetcher {
         url: response.realUri.toString(),
       );
     } on DioException catch (e) {
-      throw FetchException(_describe(e));
+      throw FetchException(_describe(e), statusCode: e.response?.statusCode);
+    }
+  }
+
+  @override
+  Future<FetchedDocument> fetchPrefix(
+    String url, {
+    int maxBytes = 400 * 1024,
+    bool Function(String textSoFar)? done,
+  }) async {
+    final cancel = CancelToken();
+    try {
+      final response = await _dio.get<ResponseBody>(
+        url,
+        cancelToken: cancel,
+        options: Options(
+          responseType: ResponseType.stream,
+          headers: {
+            'Accept': 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.5',
+          },
+        ),
+      );
+      final bytes = <int>[];
+      var checked = 0;
+      await for (final chunk in response.data!.stream) {
+        bytes.addAll(chunk);
+        // Check roughly every 16 KB rather than on every small chunk.
+        if (bytes.length >= maxBytes ||
+            (done != null &&
+                bytes.length - checked >= 16 * 1024 &&
+                done(utf8.decode(bytes, allowMalformed: true)))) {
+          cancel.cancel();
+          break;
+        }
+        if (bytes.length - checked >= 16 * 1024) checked = bytes.length;
+      }
+      return FetchedDocument(
+        body: utf8.decode(bytes, allowMalformed: true),
+        url: response.realUri.toString(),
+      );
+    } on DioException catch (e) {
+      throw FetchException(_describe(e), statusCode: e.response?.statusCode);
     }
   }
 

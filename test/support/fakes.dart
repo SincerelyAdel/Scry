@@ -20,12 +20,29 @@ class FakeFetcher implements FeedFetcher {
     requested.add(url);
     final target = redirects[url] ?? url;
     final body = responses[target];
-    if (body == null) throw FetchException('Server returned 404');
+    if (body == null) {
+      throw FetchException('Server returned 404', statusCode: 404);
+    }
     return FetchedDocument(body: body, url: target);
   }
 
   @override
   Future<Uint8List?> fetchBytes(String url) async => null;
+
+  @override
+  Future<FetchedDocument> fetchPrefix(
+    String url, {
+    int maxBytes = 400 * 1024,
+    bool Function(String textSoFar)? done,
+  }) async {
+    requested.add(url);
+    final target = redirects[url] ?? url;
+    final body = responses[target];
+    if (body == null) {
+      throw FetchException('Server returned 404', statusCode: 404);
+    }
+    return FetchedDocument(body: body, url: target);
+  }
 }
 
 /// A fresh in-memory database per call.

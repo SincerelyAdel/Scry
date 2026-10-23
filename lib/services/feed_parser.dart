@@ -1,10 +1,14 @@
 import 'package:html/parser.dart' as html_parser;
 import 'package:rss_dart/dart_rss.dart';
+import 'package:rss_dart/domain/media/content.dart';
+import 'package:rss_dart/domain/media/media.dart';
+import 'package:rss_dart/domain/media/thumbnail.dart';
 import 'package:rss_dart/domain/rss1_feed.dart';
 import 'package:xml/xml.dart';
 
 import '../utils/date_parser.dart';
 import '../utils/html_text.dart';
+import '../utils/images.dart';
 
 /// Thrown when a document isn't a feed we can read.
 class FeedFormatException implements Exception {
@@ -34,6 +38,7 @@ class ParsedItem {
     this.pubDate,
     this.summary,
     this.content,
+    this.imageUrl,
   });
 
   final String guid;
@@ -43,6 +48,10 @@ class ParsedItem {
   final DateTime? pubDate;
   final String? summary;
   final String? content;
+
+  /// A picture for the item: media thumbnail or content, an image
+  /// enclosure, or the first image in its body.
+  final String? imageUrl;
 }
 
 /// Parses RSS 2.0, RSS 1.0 (RDF) and Atom documents.
@@ -99,6 +108,11 @@ ParsedFeed _fromRss(RssFeed feed, Uri? base, String feedUrl) {
           date: item.pubDate ?? item.dc?.date,
           summary: item.description,
           content: item.content?.value,
+          media: [
+            ..._mediaImages(item.media),
+            if (item.enclosure?.type?.startsWith('image/') ?? false)
+              item.enclosure?.url,
+          ],
         ),
     ],
   );
@@ -142,6 +156,7 @@ ParsedFeed _fromAtom(AtomFeed feed, Uri? base, String feedUrl) {
           date: item.published ?? item.updated,
           summary: item.summary,
           content: item.content,
+          media: _mediaImages(item.media),
         ),
     ],
   );
@@ -156,6 +171,7 @@ ParsedItem _item({
   required String? date,
   required String? summary,
   required String? content,
+  List<String?> media = const [],
 }) {
   final url = _resolve(base, link);
   final pubDate = parseFeedDate(date);
@@ -168,7 +184,29 @@ ParsedItem _item({
     pubDate: pubDate,
     summary: _nonEmpty(summary),
     content: _nonEmpty(content),
+    imageUrl:
+        media
+            .map((m) => resolveUrl(m, url ?? base?.toString()))
+            .nonNulls
+            .firstOrNull ??
+        firstImageInHtml(content, base: url ?? base?.toString()) ??
+        firstImageInHtml(summary, base: url ?? base?.toString()),
   );
+}
+
+/// Image URLs from Media RSS (`media:thumbnail`, `media:content`), loose or
+/// inside a `media:group`.
+List<String?> _mediaImages(Media? media) {
+  if (media == null) return const [];
+  bool isImage(Content c) =>
+      c.medium == 'image' || (c.type?.startsWith('image/') ?? false);
+  return [
+    for (final t in media.thumbnails) t.url,
+    for (final c in media.contents.where(isImage)) c.url,
+    for (final t in media.group?.thumbnails ?? const <Thumbnail>[]) t.url,
+    for (final c in media.group?.contents.where(isImage) ?? const <Content>[])
+      c.url,
+  ];
 }
 
 /// Prefers `rel="alternate"` (or no rel) with an HTML type; falls back to

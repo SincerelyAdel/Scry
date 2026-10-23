@@ -4,6 +4,8 @@ import 'package:sqflite/sqflite.dart';
 import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
+import '../models/paper_figure.dart';
+import '../utils/images.dart';
 
 /// Thin wrapper over the SQLite database holding feeds and articles.
 ///
@@ -14,7 +16,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 1;
+  static const _version = 2;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -33,6 +35,7 @@ class AppDatabase {
         version: _version,
         onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
         onCreate: _createSchema,
+        onUpgrade: _upgrade,
       ),
     );
     return AppDatabase._(db);
@@ -67,6 +70,7 @@ class AppDatabase {
         isRead INTEGER NOT NULL DEFAULT 0,
         isDeleted INTEGER NOT NULL DEFAULT 0,
         addedDate INTEGER NOT NULL,
+        $_imageColumns,
         UNIQUE (feedId, guid)
       )
     ''');
@@ -74,6 +78,47 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_articles_date ON articles(isDeleted, pubDate)',
     );
+  }
+
+  /// Added in version 2: a picture per article, and arXiv figures.
+  /// figuresState is 0 not looked for, 1 found, 2 no HTML version.
+  static const _imageColumns = '''
+        imageUrl TEXT,
+        imageChecked INTEGER NOT NULL DEFAULT 0,
+        figures TEXT,
+        figuresState INTEGER NOT NULL DEFAULT 0''';
+
+  static Future<void> _upgrade(Database db, int from, int to) async {
+    if (from < 2) {
+      for (final column in _imageColumns.split(',')) {
+        await db.execute('ALTER TABLE articles ADD COLUMN ${column.trim()}');
+      }
+      await _backfillImages(db);
+    }
+  }
+
+  /// Gives articles stored before version 2 the first image in their body.
+  static Future<void> _backfillImages(Database db) async {
+    final rows = await db.rawQuery(
+      "SELECT id, url, summary, content FROM articles "
+      "WHERE imageUrl IS NULL AND (content LIKE '%<img%' OR summary LIKE '%<img%')",
+    );
+    final batch = db.batch();
+    for (final row in rows) {
+      final base = row['url'] as String?;
+      final image =
+          firstImageInHtml(row['content'] as String?, base: base) ??
+          firstImageInHtml(row['summary'] as String?, base: base);
+      if (image != null) {
+        batch.update(
+          'articles',
+          {'imageUrl': image},
+          where: 'id = ?',
+          whereArgs: [row['id']],
+        );
+      }
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<void> close() => _db.close();
@@ -168,7 +213,8 @@ class AppDatabase {
     final rows = await _db.rawQuery(
       '''
       SELECT a.id, a.feedId, a.guid, a.title, a.author, a.url, a.pubDate,
-             a.isRead, a.addedDate, f.title AS feedTitle
+             a.isRead, a.addedDate, a.imageUrl, a.imageChecked,
+             f.title AS feedTitle
       FROM articles a
       JOIN feeds f ON f.id = a.feedId
       WHERE ${where.join(' AND ')}
@@ -192,6 +238,61 @@ class AppDatabase {
       [id],
     );
     return rows.isEmpty ? null : Article.fromMap(rows.first);
+  }
+
+  /// Gives existing articles of [feedId] the images a refresh found, where
+  /// they don't have one yet. Keyed by guid.
+  Future<void> fillMissingImages(int feedId, Map<String, String> images) async {
+    if (images.isEmpty) return;
+    final batch = _db.batch();
+    images.forEach((guid, url) {
+      batch.update(
+        'articles',
+        {'imageUrl': url},
+        where: 'feedId = ? AND guid = ? AND imageUrl IS NULL',
+        whereArgs: [feedId, guid],
+      );
+    });
+    await batch.commit(noResult: true);
+  }
+
+  /// Records the result of looking for an article's picture.
+  Future<void> setArticleImage(int articleId, String? imageUrl) async {
+    await _db.update(
+      'articles',
+      {'imageUrl': ?imageUrl, 'imageChecked': 1},
+      where: 'id = ?',
+      whereArgs: [articleId],
+    );
+  }
+
+  Future<(FiguresState, List<PaperFigure>)> getFigures(int articleId) async {
+    final rows = await _db.query(
+      'articles',
+      columns: ['figures', 'figuresState'],
+      where: 'id = ?',
+      whereArgs: [articleId],
+    );
+    if (rows.isEmpty) return (FiguresState.unknown, const <PaperFigure>[]);
+    final state = FiguresState.values[rows.first['figuresState'] as int];
+    final json = rows.first['figures'] as String?;
+    return (
+      state,
+      json == null ? const <PaperFigure>[] : PaperFigure.decodeList(json),
+    );
+  }
+
+  Future<void> saveFigures(
+    int articleId,
+    FiguresState state,
+    List<PaperFigure> figures,
+  ) async {
+    await _db.update(
+      'articles',
+      {'figures': PaperFigure.encodeList(figures), 'figuresState': state.index},
+      where: 'id = ?',
+      whereArgs: [articleId],
+    );
   }
 
   Future<int> unreadCount() async {

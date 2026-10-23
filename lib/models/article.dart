@@ -13,6 +13,8 @@ class Article {
     this.isRead = false,
     required this.addedDate,
     this.feedTitle,
+    this.imageUrl,
+    this.imageChecked = false,
   });
 
   final int? id;
@@ -40,10 +42,18 @@ class Article {
   /// Joined in from the feeds table for display.
   final String? feedTitle;
 
+  /// A picture to show for the article: from the feed, the article's own
+  /// page (its preview image), or for arXiv papers the first figure.
+  final String? imageUrl;
+
+  /// True once the article's page has been checked for [imageUrl], so it
+  /// isn't downloaded again when there's none.
+  final bool imageChecked;
+
   /// Best date to show and sort by.
   DateTime get displayDate => pubDate ?? addedDate;
 
-  Article copyWith({bool? isRead}) {
+  Article copyWith({bool? isRead, String? imageUrl, bool? imageChecked}) {
     return Article(
       id: id,
       feedId: feedId,
@@ -57,6 +67,8 @@ class Article {
       isRead: isRead ?? this.isRead,
       addedDate: addedDate,
       feedTitle: feedTitle,
+      imageUrl: imageUrl ?? this.imageUrl,
+      imageChecked: imageChecked ?? this.imageChecked,
     );
   }
 
@@ -74,6 +86,8 @@ class Article {
       isRead: map['isRead'] == 1,
       addedDate: _dateFromMillis(map['addedDate'])!,
       feedTitle: map['feedTitle'] as String?,
+      imageUrl: map['imageUrl'] as String?,
+      imageChecked: map['imageChecked'] == 1,
     );
   }
 
@@ -91,6 +105,8 @@ class Article {
       'content': content,
       'isRead': isRead ? 1 : 0,
       'addedDate': addedDate.millisecondsSinceEpoch,
+      'imageUrl': imageUrl,
+      'imageChecked': imageChecked ? 1 : 0,
     };
   }
 }

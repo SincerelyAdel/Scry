@@ -4,8 +4,11 @@ import 'dart:typed_data';
 import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
+import '../models/paper_figure.dart';
 import '../services/feed_fetcher.dart';
 import '../services/feed_parser.dart';
+import '../utils/arxiv.dart';
+import '../utils/images.dart';
 import 'app_database.dart';
 
 class DuplicateFeedException implements Exception {
@@ -162,6 +165,66 @@ class FeedRepository {
 
   Future<void> restoreArticle(int articleId) => _db.restoreArticle(articleId);
 
+  // --------------------------------------------------------------- images
+
+  /// Finds a picture for an article whose feed didn't supply one: the first
+  /// figure for an arXiv paper, otherwise its page's preview image. Only
+  /// the start of the page is downloaded. The result is stored, including
+  /// "none", so each article is checked once. Network failures aren't
+  /// stored, so they're retried later.
+  Future<String?> findImage(Article article) async {
+    if (article.imageUrl != null) return article.imageUrl;
+    final id = article.id!;
+    final paper = arxivId(article.url, article.guid);
+    String? image;
+    try {
+      if (paper != null) {
+        final page = await _fetcher.fetchPrefix(
+          arxivHtmlUrl(paper),
+          maxBytes: 600 * 1024,
+          done: (text) => text.contains('ltx_graphics'),
+        );
+        image = arxivFirstFigure(page.body, pageUrl: page.url);
+      } else if (article.url != null) {
+        final page = await _fetcher.fetchPrefix(
+          article.url!,
+          done: pagePreviewFound,
+        );
+        image = pagePreviewImage(page.body, pageUrl: page.url);
+      }
+    } on FetchException catch (e) {
+      // Missing pages won't appear later; anything else might.
+      if (e.statusCode == null || e.statusCode! >= 500) return null;
+    }
+    await _db.setArticleImage(id, image);
+    return image;
+  }
+
+  /// A paper's figures, from storage or else from its arXiv HTML version.
+  /// Throws [FetchException] when offline and nothing is stored yet.
+  Future<(FiguresState, List<PaperFigure>)> loadFigures(Article article) async {
+    final id = article.id!;
+    final stored = await _db.getFigures(id);
+    if (stored.$1 != FiguresState.unknown) return stored;
+    final paper = arxivId(article.url, article.guid);
+    if (paper == null) return (FiguresState.missing, const <PaperFigure>[]);
+    try {
+      final page = await _fetcher.fetchText(arxivHtmlUrl(paper));
+      final figures = arxivFigures(page.body, pageUrl: page.url);
+      await _db.saveFigures(id, FiguresState.found, figures);
+      if (article.imageUrl == null && figures.isNotEmpty) {
+        await _db.setArticleImage(id, figures.first.images.first);
+      }
+      return (FiguresState.found, figures);
+    } on FetchException catch (e) {
+      if (e.statusCode == 404) {
+        await _db.saveFigures(id, FiguresState.missing, const []);
+        return (FiguresState.missing, const <PaperFigure>[]);
+      }
+      rethrow;
+    }
+  }
+
   // -------------------------------------------------------------- helpers
 
   /// Adds a scheme when missing and trims whitespace.
@@ -194,7 +257,7 @@ class FeedRepository {
     }
   }
 
-  Future<int> _storeItems(int feedId, List<ParsedItem> items) {
+  Future<int> _storeItems(int feedId, List<ParsedItem> items) async {
     final now = DateTime.now();
     // Feeds list newest first. Inserting in reverse gives newer items higher
     // ids, which breaks ties correctly for items without a date.
@@ -209,10 +272,17 @@ class FeedRepository {
           pubDate: item.pubDate,
           summary: item.summary,
           content: item.content,
+          imageUrl: item.imageUrl,
           addedDate: now,
         ),
     ];
-    return _db.insertArticles(articles);
+    final added = await _db.insertArticles(articles);
+    // Articles stored before images were picked up get theirs now.
+    await _db.fillMissingImages(feedId, {
+      for (final item in items)
+        if (item.imageUrl != null) item.guid: item.imageUrl!,
+    });
+    return added;
   }
 
   Future<Uint8List?> _fetchFavicon(String pageUrl) async {

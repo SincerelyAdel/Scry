@@ -25,12 +25,24 @@ The icon is that ball, painted in gold and purple brush strokes.
   articles; tap a feed to see only its articles.
 - **Gestures**: swipe right to toggle read, swipe left to delete (with undo).
   Deleted articles don't come back on the next refresh.
+- **Sample images**: every inbox card shows a picture when the article has
+  one: from the feed (Media RSS, image enclosures or the first image in the
+  post), else the article page's preview image (`og:image`), else for arXiv
+  papers the first figure. Lookups run in the background as cards scroll
+  into view, read only the start of each page, and are stored, so each
+  article is checked once.
 - **Reader**: title, author, date, feed, and the body (full content when the
-  feed includes it, otherwise the summary). Text is selectable. Buttons to
-  open in the browser, share, and mark read or unread. Opening an article
-  marks it read.
-- **Offline**: feeds, articles and read state live in SQLite, so cached
-  articles are readable without a connection.
+  feed includes it, otherwise the summary), shown with its formatting:
+  headings, links, lists, quotes, code, tables and images. Tap an image to
+  zoom. Text is selectable. Buttons to open in the browser, share, and mark
+  read or unread. Opening an article marks it read.
+- **arXiv papers**: the id and announcement type are shown as tags with a
+  PDF button, the abstract on its own, and a **Figures** section with every
+  figure and caption from the paper's HTML version on arXiv. Papers without
+  an HTML version point to the PDF.
+- **Offline**: feeds, articles, read state and fetched figures live in
+  SQLite, and images are cached on disk, so anything opened once is
+  readable without a connection.
 - **Customization**: dark (default), light or system theme, switchable from
   the header; article text size; default sort. All saved with
   `shared_preferences`.
@@ -86,10 +98,13 @@ lib/
     feed_fetcher.dart       Dio HTTP (interface, so tests use a fake)
     feed_parser.dart        RSS/Atom/RDF → ParsedFeed, plus feed discovery in HTML
     background_sync.dart    Workmanager dispatcher and scheduling
-  state/                    ChangeNotifiers: settings, feeds, articles (inbox)
+  state/                    ChangeNotifiers: settings, feeds, articles (inbox),
+                            article images (background picture lookups)
   screens/                  home shell, inbox, article detail, feeds, settings
-  widgets/                  article tile, add-feed dialog
-  utils/                    date parsing, HTML → text, date formatting
+  widgets/                  article tile, add-feed dialog, HTML renderer,
+                            cached images with a zoomable viewer
+  utils/                    date parsing, HTML → text, date formatting,
+                            arXiv (summaries, figures), finding page images
 tool/
   icon/                     the app icon's source SVG and the scripts that
                             draw it and render every Android and iOS size
@@ -123,16 +138,22 @@ tool/
 | | | isRead | 0/1 |
 | | | isDeleted | 0/1 |
 | | | addedDate | epoch ms |
+| | | imageUrl | text? (sample picture) |
+| | | imageChecked | 0/1 (page looked at) |
+| | | figures | text? (JSON, arXiv) |
+| | | figuresState | 0 unknown / 1 found / 2 no HTML |
 
 ### Package notes
 
 - **Parsing** uses [`rss_dart`](https://pub.dev/packages/rss_dart), a
   maintained successor of `webfeed`. `webfeed` 0.7 caps the SDK at `<3.0.0`
   and won't resolve on current Flutter.
-- **Article bodies** are converted from HTML to plain text with paragraph
-  breaks and bullets kept (`package:html`), rather than rendered as HTML. That
-  keeps the reader fast and themeable. Images and links are left out, and
-  **Open in browser** shows the original page.
+- **Article bodies** are rendered by Scry's own small HTML renderer
+  (`lib/widgets/html_view.dart`, built on `package:html`) rather than a web
+  view, so they follow the app's fonts and colours. Scripts, forms and
+  embedded players are left out; **Open in browser** shows the original.
+- **Images** use [`cached_network_image`](https://pub.dev/packages/cached_network_image),
+  which keeps them on disk for offline reading.
 
 ## App icon
 
@@ -158,5 +179,4 @@ pull-to-refresh, and the sync setting is greyed out.
 - OPML import/export and backup
 - Read-time estimates
 - Auto-tagging articles by category with a local LLM
-- Rich HTML rendering with inline images
 - Pruning very old articles

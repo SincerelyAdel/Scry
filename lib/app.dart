@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'data/feed_repository.dart';
 import 'screens/home_shell.dart';
 import 'services/background_sync.dart';
+import 'state/article_images.dart';
 import 'state/articles_provider.dart';
 import 'state/feeds_provider.dart';
 import 'state/settings_provider.dart';
@@ -32,6 +33,7 @@ class ScryApp extends StatefulWidget {
 class _ScryAppState extends State<ScryApp> {
   late final FeedsProvider _feeds;
   late final ArticlesProvider _articles;
+  late final ArticleImages _images;
   late var _sort = widget.settings.sort;
   late var _syncInterval = widget.settings.syncInterval;
 
@@ -40,6 +42,7 @@ class _ScryAppState extends State<ScryApp> {
     super.initState();
     _feeds = FeedsProvider(widget.repository);
     _articles = ArticlesProvider(widget.repository, initialSort: _sort);
+    _images = ArticleImages(widget.repository);
 
     // The two lists depend on each other: new or deleted articles change
     // feed counts, and feed changes change the inbox.
@@ -77,6 +80,7 @@ class _ScryAppState extends State<ScryApp> {
     widget.settings.removeListener(_onSettingsChanged);
     _feeds.dispose();
     _articles.dispose();
+    _images.dispose();
     super.dispose();
   }
 
@@ -88,6 +92,7 @@ class _ScryAppState extends State<ScryApp> {
         ChangeNotifierProvider.value(value: widget.settings),
         ChangeNotifierProvider.value(value: _feeds),
         ChangeNotifierProvider.value(value: _articles),
+        ChangeNotifierProvider.value(value: _images),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) => MaterialApp(
