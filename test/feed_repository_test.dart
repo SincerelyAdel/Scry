@@ -210,9 +210,8 @@ void main() {
     });
 
     test('by feed groups alphabetically, newest first within', () async {
-      final titles = (await repo.listArticles(
-        sort: ArticleSort.byFeed,
-      )).map((a) => a.title);
+      final titles = (await repo.listArticles(sort: ArticleSort.byFeed))
+          .map((a) => a.title);
       expect(titles, [
         'a item 2',
         'a item 1',
