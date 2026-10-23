@@ -110,6 +110,33 @@ const suggestedFeeds = <SuggestedFeed>[
     Topic.uvm,
   ),
   SuggestedFeed('VLSI Verify', 'https://vlsiverify.com/feed/', Topic.uvm),
+  // Biology and medicine
+  SuggestedFeed(
+    'Quanta Magazine: biology',
+    'https://www.quantamagazine.org/biology/feed/',
+    Topic.bio,
+  ),
+  SuggestedFeed(
+    'The Transmitter (neuroscience)',
+    'https://www.thetransmitter.org/feed/',
+    Topic.bio,
+  ),
+  SuggestedFeed(
+    'MIT Technology Review: biotech',
+    'https://www.technologyreview.com/topic/biotechnology/feed',
+    Topic.bio,
+  ),
+  SuggestedFeed(
+    'New Scientist: health',
+    'https://www.newscientist.com/subject/health/feed/',
+    Topic.bio,
+  ),
+  SuggestedFeed(
+    'Science News: life',
+    'https://www.sciencenews.org/topic/life/feed',
+    Topic.bio,
+  ),
+  SuggestedFeed('Asimov Press', 'https://www.asimov.press/feed', Topic.bio),
 ];
 
 /// Shows the add-feed dialog. Resolves to the new feed, or null if the user

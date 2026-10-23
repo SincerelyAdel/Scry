@@ -138,6 +138,38 @@ void main() {
       expect(tagsInText('Notes from Chip Huyen', ''), isEmpty);
     });
 
+    test('biology and medicine get the Bio tag', () {
+      expect(
+        tagsInText('A computer made from rat neurons learns to play Pong', ''),
+        {Topic.bio},
+      );
+      expect(tagsInText('Personalised cancer vaccine expected next year', ''), {
+        Topic.bio,
+      });
+      // Neural networks aren't neurons, and solar cells aren't biology.
+      expect(tagsInText('Scaling neural networks', ''), {Topic.ml});
+      expect(tagsInText('Perovskite solar cells hit 30%', ''), isEmpty);
+      // AWS's Neuron SDK and microbenchmarks aren't biology.
+      expect(
+        tagsInText(
+          'Trainium review',
+          'The Neuron SDK, Neuron compiler, neuron runtime and our '
+              'microbenchmarking suite.',
+        ),
+        isNot(contains(Topic.bio)),
+      );
+      expect(
+        guessTopics(
+          'https://www.technologyreview.com/topic/biotechnology/feed',
+          'MIT Technology Review',
+        ),
+        {Topic.bio},
+      );
+      expect(guessTopics('https://www.thetransmitter.org/feed/', 'x'), {
+        Topic.bio,
+      });
+    });
+
     test('UVM articles and feeds get the UVM tag', () {
       expect(tagsInText('Development of a Reusable AXI-Lite UVC', ''), {
         Topic.uvm,

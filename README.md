@@ -23,7 +23,9 @@ The icon is that ball, painted in gold and purple brush strokes.
   refresh error.
 - **Tags**: **ML** (purple), **IC** (chips and IC design, teal), **UVM**
   (UVM and verification, blue; suggested feeds: AMIQ Consulting, VLSI
-  Verify) and **Claude** (clay). A feed can have several, guessed when it's added (from
+  Verify), **Bio** (biology and medicine, pink; suggested feeds: Quanta
+  biology, The Transmitter, MIT Technology Review biotech, New Scientist
+  health, Science News life, Asimov Press) and **Claude** (clay). A feed can have several, guessed when it's added (from
   arXiv categories and names) and changed from its menu (**Tags**). Each
   article carries its feed's tags plus any its own words earn: a match in
   the title, or several in the text (`tagsInText` in `lib/models/topic.dart`;

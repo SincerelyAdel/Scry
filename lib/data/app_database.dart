@@ -22,7 +22,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 9;
+  static const _version = 11;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -194,8 +194,9 @@ class AppDatabase {
         await db.execute('ALTER TABLE novels ADD COLUMN $_notifiedColumn');
       }
     }
-    // Version 9 added the UVM tag; tag existing articles again.
-    if (from >= 4 && from < 9) await _backfillTags(db);
+    // Versions 9 to 11 added the UVM and Bio tags and refined their words;
+    // tag existing articles again.
+    if (from >= 4 && from < 11) await _backfillTags(db);
   }
 
   /// Added in version 4: tags from each article's own words.
@@ -210,14 +211,13 @@ class AppDatabase {
         row['title'] as String,
         (row['fullContent'] ?? row['content'] ?? row['summary']) as String?,
       );
-      if (tags != null) {
-        batch.update(
-          'articles',
-          {'tags': tags},
-          where: 'id = ?',
-          whereArgs: [row['id']],
-        );
-      }
+      // Always written, so tags the words no longer give are dropped.
+      batch.update(
+        'articles',
+        {'tags': tags},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
     }
     await batch.commit(noResult: true);
   }

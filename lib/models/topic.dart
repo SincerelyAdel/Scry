@@ -22,6 +22,12 @@ enum Topic {
     dark: Color(0xFF7FB2FF),
     light: Color(0xFF2F62B8),
   ),
+  bio(
+    'Bio',
+    'Biology and medicine',
+    dark: Color(0xFFF28DB2),
+    light: Color(0xFFB23A6B),
+  ),
   claude('Claude', 'Claude', dark: Color(0xFFE48D69), light: Color(0xFFB4532F));
 
   const Topic(
@@ -88,6 +94,12 @@ final _uvmFeedWords = RegExp(
   caseSensitive: false,
 );
 
+final _bioFeedWords = RegExp(
+  r'biolog|biotech|medic|health|neuroscien|life sciences?|transmitter|'
+  r'asimov press|sciencenews\.org/topic/life',
+  caseSensitive: false,
+);
+
 final _claudeFeedWords = RegExp(r'anthropic|claude', caseSensitive: false);
 
 /// A first guess at a new feed's tags from its address and title. The user
@@ -107,6 +119,7 @@ Set<Topic> guessTopics(String url, String title) {
   final text = '$title $url';
   if (_claudeFeedWords.hasMatch(text)) return {Topic.claude};
   if (_uvmFeedWords.hasMatch(text)) return {Topic.uvm, Topic.ic};
+  if (_bioFeedWords.hasMatch(text)) return {Topic.bio};
   if (_icFeedWords.hasMatch(text)) return {Topic.ic};
   if (_mlFeedWords.hasMatch(text)) return {Topic.ml};
   return {};
@@ -132,12 +145,29 @@ final _articleWords = <Topic, RegExp>{
     r'\b(uvm(?:_\w+)?|uvcs?|universal verification methodology)\b',
     caseSensitive: false,
   ),
+  Topic.bio: RegExp(
+    // "neurons" only: AWS's chip software is called Neuron.
+    r'\b(biology|biologists?|biotech\w*|neurons|neuronal|neuroscien\w*|brains?|'
+    r'organoids?|genes?|genetic\w*|genom\w*|dna|rna|crispr|proteins?|'
+    r'(?:stem|cancer|brain|immune|blood) cells|cancers?|tumou?rs?|vaccines?|'
+    r'diseases?|patients?|clinical trials?|drugs?|medicine|medical|'
+    r'bacteri\w*|microb(?:es?|ial|iomes?|iolog\w*)|pathogens?|infections?|'
+    r'antibod\w*|immune|'
+    r'alzheimer\w*|parkinson\w*|diabetes|malaria|enzymes?|species)\b',
+    caseSensitive: false,
+  ),
   Topic.claude: RegExp(r'\b(claude|anthropic)\b', caseSensitive: false),
 };
 
 /// How often a tag's words must appear in an article's text (not its
 /// title) to count; a passing mention doesn't make an article about it.
-const _bodyHits = {Topic.ml: 4, Topic.ic: 4, Topic.uvm: 2, Topic.claude: 2};
+const _bodyHits = {
+  Topic.ml: 4,
+  Topic.ic: 4,
+  Topic.uvm: 2,
+  Topic.bio: 4,
+  Topic.claude: 2,
+};
 
 /// Tags an article earns from its own words: any match in the title, or
 /// several in the text.
