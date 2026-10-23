@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../services/feed_fetcher.dart';
 import '../../services/ranobes.dart';
@@ -69,38 +70,54 @@ class HumanCheckScreen extends StatefulWidget {
 }
 
 class _HumanCheckScreenState extends State<HumanCheckScreen> {
-  InAppWebViewController? _web;
+  /// Reads the in-app browser's cookies (see MainActivity.kt).
+  static const _cookies = MethodChannel('scry/cookies');
+
+  late final WebViewController _web;
   bool _saving = false;
 
   /// True when the page is the site's real content (search results, a
   /// novel, a chapter or a chapter list), not the check.
-  static const _realPageScript = '''
+  static const _realPageScript = r"""
     !!(document.querySelector('#arrticle, .r-fullstory-spec, article.shortstory')
-       || /window\\.__DATA__/.test(document.documentElement.innerHTML))
-  ''';
+       || /window\.__DATA__/.test(document.documentElement.innerHTML))
+  """;
 
-  Future<void> _onLoaded(InAppWebViewController web) async {
+  @override
+  void initState() {
+    super.initState();
+    _web = WebViewController()
+      ..setJavaScriptMode(JavaScriptMode.unrestricted)
+      ..setNavigationDelegate(NavigationDelegate(onPageFinished: _onLoaded))
+      ..loadRequest(Uri.parse(widget.url));
+  }
+
+  Future<void> _onLoaded(String _) async {
     if (_saving) return;
-    final real = await web.evaluateJavascript(source: _realPageScript);
-    if (real == true) await _finish();
+    try {
+      final real = await _web.runJavaScriptReturningResult(_realPageScript);
+      // Android hands back a bool; other platforms may give 'true' or 1.
+      if (real == true || real == 'true' || real == 1) await _finish();
+    } on Exception {
+      // The page is still changing; the next load checks again.
+    }
   }
 
   /// Saves the browser's user agent and the site's cookies, then closes.
   Future<void> _finish() async {
-    final web = _web;
-    if (web == null || _saving) return;
+    if (_saving) return;
     setState(() => _saving = true);
-    final agent = await web.evaluateJavascript(source: 'navigator.userAgent');
+    final agent = await _web.getUserAgent();
     // Includes the cookies scripts can't see, which is where sites
     // usually keep the "check passed" token.
-    final cookies = await CookieManager.instance().getCookies(
-      url: WebUri(Ranobes.origin),
-    );
+    final cookies = await _cookies.invokeMethod<String>('get', {
+      'url': Ranobes.origin,
+    });
     await RanobesSession.save(
-      userAgent: agent is String && agent.isNotEmpty
+      userAgent: agent != null && agent.isNotEmpty
           ? agent
           : RanobesSession.userAgent,
-      cookies: cookies.map((c) => '${c.name}=${c.value}').join('; '),
+      cookies: cookies ?? '',
     );
     if (mounted) Navigator.of(context).pop(true);
   }
@@ -130,17 +147,7 @@ class _HumanCheckScreenState extends State<HumanCheckScreen> {
             ),
           ),
           Divider(height: 1, color: c.border),
-          Expanded(
-            child: InAppWebView(
-              initialUrlRequest: URLRequest(url: WebUri(widget.url)),
-              initialSettings: InAppWebViewSettings(
-                javaScriptEnabled: true,
-                thirdPartyCookiesEnabled: true,
-              ),
-              onWebViewCreated: (web) => _web = web,
-              onLoadStop: (web, _) => _onLoaded(web),
-            ),
-          ),
+          Expanded(child: WebViewWidget(controller: _web)),
         ],
       ),
     );
