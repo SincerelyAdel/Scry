@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/article.dart';
 import '../models/article_sort.dart';
+import '../models/feed.dart';
 import '../models/topic.dart';
 import '../state/articles_provider.dart';
 import '../state/feeds_provider.dart';
@@ -78,11 +79,22 @@ class InboxScreen extends StatelessWidget {
       );
     }
     if (articles.articles.isEmpty) {
-      return EmptyState(
-        icon: articles.unreadOnly ? Icons.done_all : Icons.inbox_outlined,
-        title: articles.unreadOnly ? 'All caught up' : 'Nothing here yet',
-        message: articles.unreadOnly ? null : 'Pull down to refresh.',
-      );
+      return switch (articles.show) {
+        InboxShow.all => const EmptyState(
+          icon: Icons.inbox_outlined,
+          title: 'Nothing here yet',
+          message: 'Pull down to refresh.',
+        ),
+        InboxShow.unread => const EmptyState(
+          icon: Icons.done_all,
+          title: 'All caught up',
+        ),
+        InboxShow.starred => const EmptyState(
+          icon: Icons.star_outline,
+          title: 'No starred articles',
+          message: 'Tap the star on an article to keep it here for later.',
+        ),
+      };
     }
 
     final items = articles.articles;
@@ -284,7 +296,6 @@ class _TagChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final articles = context.watch<ArticlesProvider>();
-    final feeds = context.read<FeedsProvider>();
     Widget chip(String label, Topic? topic) {
       final selected = articles.topic == topic;
       final color = topic == null ? null : topicColor(context, topic);
@@ -299,16 +310,7 @@ class _TagChips extends StatelessWidget {
             color: selected ? null : color,
           ),
           selectedColor: color?.withValues(alpha: 0.28),
-          onSelected: (_) {
-            // A feed without this tag might leave the list empty.
-            final feed = feeds.feeds
-                .where((f) => f.id == articles.feedId)
-                .firstOrNull;
-            if (topic != null && feed != null && !feed.topics.contains(topic)) {
-              articles.showFeed(null);
-            }
-            articles.showTopic(topic);
-          },
+          onSelected: (_) => articles.showTopic(topic),
         ),
       );
     }
@@ -324,8 +326,7 @@ class _TagChips extends StatelessWidget {
   }
 }
 
-/// All / Unread, the sort, and Mark all read, each in words rather than
-/// bare icons.
+/// All / Unread / Starred, and the sort, in words rather than bare icons.
 class _ViewControls extends StatelessWidget {
   const _ViewControls();
 
@@ -338,15 +339,20 @@ class _ViewControls extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        SegmentedButton<bool>(
+        SegmentedButton<InboxShow>(
           showSelectedIcon: false,
           style: const ButtonStyle(visualDensity: compact),
           segments: const [
-            ButtonSegment(value: false, label: Text('All')),
-            ButtonSegment(value: true, label: Text('Unread')),
+            ButtonSegment(value: InboxShow.all, label: Text('All')),
+            ButtonSegment(value: InboxShow.unread, label: Text('Unread')),
+            ButtonSegment(
+              value: InboxShow.starred,
+              icon: Icon(Icons.star_outline, size: 18),
+              label: Text('Starred'),
+            ),
           ],
-          selected: {articles.unreadOnly},
-          onSelectionChanged: (v) => articles.setUnreadOnly(v.first),
+          selected: {articles.show},
+          onSelectionChanged: (v) => articles.setShow(v.first),
         ),
         const SizedBox(width: 10),
         MenuAnchor(
@@ -381,40 +387,15 @@ class _ViewControls extends StatelessWidget {
               ),
           ],
         ),
-        const SizedBox(width: 10),
-        TextButton.icon(
-          style: TextButton.styleFrom(visualDensity: compact),
-          onPressed: articles.articles.any((a) => !a.isRead)
-              ? () => _markAllRead(context, articles)
-              : null,
-          icon: const Icon(Icons.done_all, size: 18),
-          label: const Text('Mark all read'),
-        ),
       ],
     );
-  }
-
-  static Future<void> _markAllRead(
-    BuildContext context,
-    ArticlesProvider articles,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    final undo = await articles.markAllRead();
-    if (undo == null) return;
-    messenger
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: const Text('Marked as read'),
-          action: SnackBarAction(label: 'Undo', onPressed: undo),
-        ),
-      );
   }
 }
 
 /// The feed list to the right of the inbox on tablets. Tapping a feed shows
-/// only its articles; tapping it again, or All feeds, shows every feed. Only
-/// feeds about the chosen topic are listed.
+/// only its articles; tapping it again, or All feeds, shows every feed. With
+/// a tag chosen, only feeds with articles under it are listed, counting
+/// those.
 class _FeedSidebar extends StatelessWidget {
   const _FeedSidebar();
 
@@ -423,12 +404,15 @@ class _FeedSidebar extends StatelessWidget {
     final c = context.palette;
     final articles = context.watch<ArticlesProvider>();
     final feeds = context.watch<FeedsProvider>().feeds;
-    final topic = articles.topic;
+    // Under a tag, a feed can be listed for a few of its articles (say,
+    // the ones that mention Claude), and counts only those.
+    final tagged = articles.topicFeeds;
+    int unreadOf(Feed f) => tagged == null ? f.unreadCount : tagged[f.id] ?? 0;
     final shown = [
       for (final f in feeds)
-        if (topic == null || f.topics.contains(topic)) f,
+        if (tagged == null || tagged.containsKey(f.id)) f,
     ];
-    final unread = shown.fold<int>(0, (n, f) => n + f.unreadCount);
+    final unread = shown.fold<int>(0, (n, f) => n + unreadOf(f));
 
     Widget row({
       required String title,
@@ -529,7 +513,7 @@ class _FeedSidebar extends StatelessWidget {
             row(
               title: f.title,
               selected: articles.feedId == f.id,
-              count: f.unreadCount,
+              count: unreadOf(f),
               leading: FeedAvatar(title: f.title, favicon: f.favicon, size: 22),
               trailing: TagDots(f.topics, size: 7),
               onTap: () => articles.feedId == f.id

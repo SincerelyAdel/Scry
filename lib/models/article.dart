@@ -13,6 +13,7 @@ class Article {
     this.summary,
     this.content,
     this.isRead = false,
+    this.isStarred = false,
     required this.addedDate,
     this.feedTitle,
     this.imageUrl,
@@ -43,6 +44,10 @@ class Article {
   final String? content;
 
   final bool isRead;
+
+  /// Starred to read later.
+  final bool isStarred;
+
   final DateTime addedDate;
 
   /// Joined in from the feeds table for display.
@@ -83,6 +88,7 @@ class Article {
 
   Article copyWith({
     bool? isRead,
+    bool? isStarred,
     String? imageUrl,
     bool? imageChecked,
     int? wordCount,
@@ -99,6 +105,7 @@ class Article {
       summary: summary,
       content: content,
       isRead: isRead ?? this.isRead,
+      isStarred: isStarred ?? this.isStarred,
       addedDate: addedDate,
       feedTitle: feedTitle,
       imageUrl: imageUrl ?? this.imageUrl,
@@ -122,6 +129,7 @@ class Article {
       summary: map['summary'] as String?,
       content: map['content'] as String?,
       isRead: map['isRead'] == 1,
+      isStarred: map['starred'] == 1,
       addedDate: _dateFromMillis(map['addedDate'])!,
       feedTitle: map['feedTitle'] as String?,
       imageUrl: map['imageUrl'] as String?,
@@ -146,6 +154,7 @@ class Article {
       'summary': summary,
       'content': content,
       'isRead': isRead ? 1 : 0,
+      'starred': isStarred ? 1 : 0,
       'addedDate': addedDate.millisecondsSinceEpoch,
       'imageUrl': imageUrl,
       'imageChecked': imageChecked ? 1 : 0,
@@ -155,6 +164,10 @@ class Article {
     };
   }
 }
+
+/// Below this many words, and with no text found on its page either, an
+/// article is only a link: the inbox marks it "Link only".
+const linkOnlyWords = 25;
 
 /// Minutes to read [words] at about 230 a minute, or null for a teaser.
 int? readMinutesFor(int words) =>

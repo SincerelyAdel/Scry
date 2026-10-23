@@ -250,6 +250,7 @@ List<Widget> articleTags(
   BuildContext context, {
   required List<Topic> tags,
   required bool paper,
+  bool linkOnly = false,
   required int? readMinutes,
 }) {
   return [
@@ -257,7 +258,17 @@ List<Widget> articleTags(
     if (paper) const Tag('Paper', icon: Icons.description_outlined),
     if (!paper && readMinutes != null)
       Tag('$readMinutes min', icon: Icons.schedule),
+    if (linkOnly) const LinkOnlyTag(),
   ];
+}
+
+/// Marks an article with nothing to read in the app, only its link.
+class LinkOnlyTag extends StatelessWidget {
+  const LinkOnlyTag({super.key});
+
+  @override
+  Widget build(BuildContext context) =>
+      const Tag('Link only', icon: Icons.link);
 }
 
 /// Small coloured dots for a list of tags, e.g. beside a feed's name.

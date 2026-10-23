@@ -5,6 +5,9 @@ import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/topic.dart';
 
+/// Which articles the inbox lists.
+enum InboxShow { all, unread, starred }
+
 /// The unified inbox: every subscribed feed's articles in one paged list.
 class ArticlesProvider extends ChangeNotifier {
   ArticlesProvider(this._repo, {ArticleSort initialSort = ArticleSort.newest})
@@ -20,7 +23,8 @@ class ArticlesProvider extends ChangeNotifier {
 
   List<Article> _articles = const [];
   ArticleSort _sort;
-  bool _unreadOnly = false;
+  InboxShow _show = InboxShow.all;
+  Map<int, int>? _topicFeeds;
   int? _feedId;
   Topic? _topic;
   String? _feedTitle;
@@ -34,11 +38,16 @@ class ArticlesProvider extends ChangeNotifier {
 
   List<Article> get articles => _articles;
   ArticleSort get sort => _sort;
-  bool get unreadOnly => _unreadOnly;
+  InboxShow get show => _show;
+  bool get unreadOnly => _show == InboxShow.unread;
 
-  /// When set, the inbox shows only feeds about this topic. Combines with
-  /// [feedId]; the inbox clears the feed when it isn't about the topic.
+  /// When set, the inbox shows only articles with this tag (their feed's or
+  /// their own). Combines with [feedId].
   Topic? get topic => _topic;
+
+  /// With a [topic]: unread counts of its articles per feed, for every feed
+  /// that has some. Null without a topic.
+  Map<int, int>? get topicFeeds => _topicFeeds;
 
   /// When set, the inbox shows a single feed.
   int? get feedId => _feedId;
@@ -56,9 +65,20 @@ class ArticlesProvider extends ChangeNotifier {
     final limit = _articles.length > pageSize ? _articles.length : pageSize;
     _loading = true;
     notifyListeners();
+    final topicFeeds = _topic == null
+        ? null
+        : await _repo.tagFeedCounts(_topic!);
+    // A feed with nothing under the tag would leave the list empty.
+    if (topicFeeds != null &&
+        _feedId != null &&
+        !topicFeeds.containsKey(_feedId)) {
+      _feedId = null;
+      _feedTitle = null;
+    }
     final rows = await _query(limit: limit, offset: 0);
     final unread = await _repo.unreadCount();
     if (generation != _generation) return;
+    _topicFeeds = topicFeeds;
     _articles = rows;
     _hasMore = rows.length == limit;
     _unreadCount = unread;
@@ -88,9 +108,9 @@ class ArticlesProvider extends ChangeNotifier {
     reload();
   }
 
-  void setUnreadOnly(bool value) {
-    if (value == _unreadOnly) return;
-    _unreadOnly = value;
+  void setShow(InboxShow value) {
+    if (value == _show) return;
+    _show = value;
     _articles = const [];
     _view++;
     reload();
@@ -118,22 +138,20 @@ class ArticlesProvider extends ChangeNotifier {
     await _repo.setRead(article.id!, isRead);
     _replace(article.id!, (a) => a.copyWith(isRead: isRead));
     _unreadCount += isRead ? -1 : 1;
+    final feeds = _topicFeeds;
+    if (feeds != null && feeds.containsKey(article.feedId)) {
+      feeds[article.feedId] = feeds[article.feedId]! + (isRead ? -1 : 1);
+    }
     notifyListeners();
     onCountsChanged?.call();
   }
 
-  /// Marks what the inbox shows read. Returns an undo, or null when there
-  /// was nothing unread.
-  Future<Future<void> Function()?> markAllRead() async {
-    final ids = await _repo.markAllRead(feedId: _feedId, topic: _topic);
-    await reload();
-    onCountsChanged?.call();
-    if (ids.isEmpty) return null;
-    return () async {
-      await _repo.markUnread(ids);
-      await reload();
-      onCountsChanged?.call();
-    };
+  /// Stars [article] to read later, or unstars it. In the Starred view an
+  /// unstarred article stays until the list reloads, so it can be undone.
+  Future<void> setStarred(Article article, bool starred) async {
+    await _repo.setStarred(article.id!, starred);
+    _replace(article.id!, (a) => a.copyWith(isStarred: starred));
+    notifyListeners();
   }
 
   /// Bumped whenever the filters or sort change, so cards can replay their
@@ -176,7 +194,8 @@ class ArticlesProvider extends ChangeNotifier {
   Future<List<Article>> _query({required int limit, required int offset}) {
     return _repo.listArticles(
       sort: _sort,
-      unreadOnly: _unreadOnly,
+      unreadOnly: _show == InboxShow.unread,
+      starredOnly: _show == InboxShow.starred,
       feedId: _feedId,
       topic: _topic,
       limit: limit,

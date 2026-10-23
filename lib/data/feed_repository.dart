@@ -160,6 +160,7 @@ class FeedRepository {
   Future<List<Article>> listArticles({
     ArticleSort sort = ArticleSort.newest,
     bool unreadOnly = false,
+    bool starredOnly = false,
     int? feedId,
     Topic? topic,
     int limit = 100,
@@ -168,6 +169,7 @@ class FeedRepository {
     return _db.listArticles(
       sort: sort,
       unreadOnly: unreadOnly,
+      starredOnly: starredOnly,
       feedId: feedId,
       topic: topic,
       limit: limit,
@@ -182,11 +184,12 @@ class FeedRepository {
   Future<void> setRead(int articleId, bool isRead) =>
       _db.setRead(articleId, isRead);
 
-  /// Marks what the inbox shows read; returns the ids for [markUnread].
-  Future<List<int>> markAllRead({int? feedId, Topic? topic}) =>
-      _db.markAllRead(feedId: feedId, topic: topic);
+  Future<void> setStarred(int articleId, bool starred) =>
+      _db.setStarred(articleId, starred);
 
-  Future<void> markUnread(List<int> ids) => _db.markUnread(ids);
+  /// Unread counts per feed among articles with [topic] (see
+  /// AppDatabase.tagFeedCounts).
+  Future<Map<int, int>> tagFeedCounts(Topic topic) => _db.tagFeedCounts(topic);
 
   Future<void> deleteArticle(int articleId) => _db.deleteArticle(articleId);
 

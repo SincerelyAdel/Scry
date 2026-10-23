@@ -252,12 +252,23 @@ void main() {
       expect(onlyA.every((a) => a.feedId == feedA.id), isTrue);
     });
 
-    test('markAllRead for one feed or everything', () async {
-      final feedA = (await repo.listFeeds()).firstWhere((f) => f.title == 'a');
-      await repo.markAllRead(feedId: feedA.id);
-      expect(await repo.unreadCount(), 3);
-      await repo.markAllRead();
-      expect(await repo.unreadCount(), 0);
+    test('starred articles are listed on their own', () async {
+      final all = await repo.listArticles();
+      expect(all.any((a) => a.isStarred), isFalse);
+      await repo.setStarred(all[2].id!, true);
+      await repo.setRead(all[2].id!, true);
+
+      final starred = await repo.listArticles(starredOnly: true);
+      expect(starred.single.title, all[2].title);
+      expect(starred.single.isStarred, isTrue);
+      // Reading it doesn't unstar it.
+      expect(
+        await repo.listArticles(starredOnly: true, unreadOnly: true),
+        isEmpty,
+      );
+
+      await repo.setStarred(all[2].id!, false);
+      expect(await repo.listArticles(starredOnly: true), isEmpty);
     });
   });
 }

@@ -146,6 +146,14 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     if (mounted) setState(() => _article = _article.copyWith(isRead: isRead));
   }
 
+  Future<void> _toggleStar() async {
+    final starred = !_article.isStarred;
+    await context.read<ArticlesProvider>().setStarred(_article, starred);
+    if (mounted) {
+      setState(() => _article = _article.copyWith(isStarred: starred));
+    }
+  }
+
   Future<void> _openInBrowser() async {
     final url = _article.url;
     if (url == null) return;
@@ -179,6 +187,16 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         actions: [
+          IconButton(
+            tooltip: _article.isStarred ? 'Unstar' : 'Star for later',
+            icon: Icon(
+              _article.isStarred
+                  ? Icons.star_rounded
+                  : Icons.star_outline_rounded,
+              color: _article.isStarred ? c.accentLight : null,
+            ),
+            onPressed: _toggleStar,
+          ),
           IconButton(
             tooltip: _article.isRead ? 'Mark as unread' : 'Mark as read',
             icon: Icon(
@@ -259,6 +277,11 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
                   tags: _article.tags,
                   paper: _paperId != null,
                   readMinutes: _article.readMinutes,
+                  linkOnly:
+                      hasLink &&
+                      _paperId == null &&
+                      _html == null &&
+                      !_fetchingFull,
                 ),
               ),
             ],

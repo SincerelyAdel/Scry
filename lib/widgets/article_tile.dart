@@ -46,6 +46,9 @@ class ArticleTile extends StatelessWidget {
     final words = context.select<ArticleImages, int>(
       (i) => i.wordCountFor(article),
     );
+    final linkOnly = context.select<ArticleImages, bool>(
+      (i) => i.isLinkOnly(article),
+    );
     final paper = arxivId(article.url, article.guid) != null;
     final minutes = readMinutesFor(words);
     final meta = [
@@ -78,6 +81,7 @@ class ArticleTile extends StatelessWidget {
                 ),
               ),
             ),
+            _StarButton(article: article),
             if (unread)
               Semantics(
                 label: 'Unread',
@@ -111,11 +115,18 @@ class ArticleTile extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          meta,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(color: c.muted, fontSize: 12),
+        Row(
+          children: [
+            Flexible(
+              child: Text(
+                meta,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: c.muted, fontSize: 12),
+              ),
+            ),
+            if (linkOnly) ...[const SizedBox(width: 10), const LinkOnlyTag()],
+          ],
         ),
       ],
     );
@@ -153,6 +164,32 @@ class ArticleTile extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+/// Stars the article to read later. Outlined until starred, then gold.
+class _StarButton extends StatelessWidget {
+  const _StarButton({required this.article});
+
+  final Article article;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final starred = article.isStarred;
+    return IconButton(
+      tooltip: starred ? 'Unstar' : 'Star for later',
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 32, height: 28),
+      iconSize: 19,
+      icon: Icon(
+        starred ? Icons.star_rounded : Icons.star_outline_rounded,
+        color: starred ? c.accentLight : c.faint,
+      ),
+      onPressed: () =>
+          context.read<ArticlesProvider>().setStarred(article, !starred),
     );
   }
 }

@@ -32,12 +32,17 @@ The icon is that ball, painted in gold and purple brush strokes.
   them is brushed in from the left with a bright stroke passing over, one
   card after another, replayed when the filter or sort changes. **Paper**
   and the read time sit in the card's grey line; the reader shows badges.
+  **Link only** marks an article with nothing to read in the app: the feed
+  sent only its link and its page gave no article text.
 - **Unified inbox**: every feed's articles merged into one list, newest first,
-  with unread dots. Under the title: the tag chips, an **All / Unread**
-  switch, the sort (newest, by feed, unread first, or by read time: quick
-  or long reads first, with papers and unfetched teasers last), and **Mark
-  all read**, which marks only what the filters show and can be undone. On tablets the feed list sits beside the articles:
-  tap a feed to see only its articles, and combine it with the topic chips.
+  with unread dots. Under the title: the tag chips, an **All / Unread /
+  Starred** switch, and the sort (newest, by feed, unread first, or by read
+  time: quick or long reads first, with papers and unfetched teasers last).
+  On tablets the feed list sits beside the articles: tap a feed to see only
+  its articles, and combine it with the tag chips. Under a tag, the list
+  shows every feed with articles that have it, counting only those.
+- **Stars**: tap the star on a card or in the reader to keep an article for
+  later; **Starred** lists them. Reading an article doesn't unstar it.
 - **Gestures**: swipe right to toggle read, swipe left to delete (with undo).
   Deleted articles don't come back on the next refresh.
 - **Sample images**: every inbox card shows a picture when the article has
@@ -176,6 +181,7 @@ tool/
 | | | wordCount | int (best body's length) |
 | | | fullContent | text? (HTML from the web page) |
 | | | tags | text? (from its own words, e.g. `ic,claude`) |
+| | | starred | 0/1 |
 
 ### Package notes
 

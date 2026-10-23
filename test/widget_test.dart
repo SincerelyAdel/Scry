@@ -174,6 +174,28 @@ void main() {
     expect(find.text('Second post'), findsOneWidget);
   });
 
+  testWidgets('starring keeps an article under Starred', (tester) async {
+    await seedFeeds(tester);
+    await pumpApp(tester);
+
+    await tester.tap(find.text('Starred'));
+    await tester.pumpAndSettle();
+    expect(find.text('No starred articles'), findsOneWidget);
+
+    // Everything seeded is unread, so Unread lists it all.
+    await tester.tap(find.text('Unread'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Star for later').at(1));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Unstar'), findsOneWidget);
+
+    await tester.tap(find.text('Starred'));
+    await tester.pumpAndSettle();
+    expect(find.text('Second post'), findsOneWidget);
+    expect(find.text('First post'), findsNothing);
+    expect(find.text('Mark all read'), findsNothing);
+  });
+
   testWidgets('starts dark; theme choice persists', (tester) async {
     await pumpApp(tester);
     expect(

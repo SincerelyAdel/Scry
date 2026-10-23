@@ -20,7 +20,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 4;
+  static const _version = 5;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -78,6 +78,7 @@ class AppDatabase {
         $_imageColumns,
         $_textColumns,
         tags TEXT,
+        starred INTEGER NOT NULL DEFAULT 0,
         UNIQUE (feedId, guid)
       )
     ''');
@@ -118,6 +119,14 @@ class AppDatabase {
     if (from < 4) {
       await db.execute('ALTER TABLE articles ADD COLUMN tags TEXT');
       await _backfillTags(db);
+    }
+    if (from < 5) {
+      await db.execute(
+        'ALTER TABLE articles ADD COLUMN starred INTEGER NOT NULL DEFAULT 0',
+      );
+      // Version 4 had a Mark all read button that was easy to hit by
+      // mistake; this version removes it and gives every article back.
+      await db.execute('UPDATE articles SET isRead = 0');
     }
   }
 
@@ -296,6 +305,7 @@ class AppDatabase {
   Future<List<Article>> listArticles({
     ArticleSort sort = ArticleSort.newest,
     bool unreadOnly = false,
+    bool starredOnly = false,
     int? feedId,
     Topic? topic,
     int limit = 100,
@@ -312,6 +322,7 @@ class AppDatabase {
     final where = <String>['a.isDeleted = 0'];
     final args = <Object?>[];
     if (unreadOnly) where.add('a.isRead = 0');
+    if (starredOnly) where.add('a.starred = 1');
     if (feedId != null) {
       where.add('a.feedId = ?');
       args.add(feedId);
@@ -324,7 +335,7 @@ class AppDatabase {
       '''
       SELECT a.id, a.feedId, a.guid, a.title, a.author, a.url, a.pubDate,
              a.isRead, a.addedDate, a.imageUrl, a.imageChecked, a.wordCount,
-             a.tags, f.title AS feedTitle, f.topic AS feedTopic
+             a.tags, a.starred, f.title AS feedTitle, f.topic AS feedTopic
       FROM articles a
       JOIN feeds f ON f.id = a.feedId
       WHERE ${where.join(' AND ')}
@@ -334,6 +345,24 @@ class AppDatabase {
       [...args, limit, offset],
     );
     return rows.map(Article.fromMap).toList();
+  }
+
+  /// Unread articles per feed among those with [topic], for every feed
+  /// that has any. A feed can be missing the tag itself while some of its
+  /// articles earn it from their own words.
+  Future<Map<int, int>> tagFeedCounts(Topic topic) async {
+    final rows = await _db.rawQuery(
+      '''
+      SELECT a.feedId AS feedId,
+             SUM(CASE WHEN a.isRead = 0 THEN 1 ELSE 0 END) AS unread
+      FROM articles a
+      JOIN feeds f ON f.id = a.feedId
+      WHERE a.isDeleted = 0 AND $_hasTag
+      GROUP BY a.feedId
+    ''',
+      ['%,${topic.name},%'],
+    );
+    return {for (final r in rows) r['feedId'] as int: r['unread'] as int};
   }
 
   /// True when the article or its feed has the tag in the argument
@@ -457,43 +486,14 @@ class AppDatabase {
     );
   }
 
-  /// Marks the unread articles shown by the inbox's filters read, and
-  /// returns their ids so it can be undone with [markUnread].
-  Future<List<int>> markAllRead({int? feedId, Topic? topic}) async {
-    final where = ['a.isRead = 0', 'a.isDeleted = 0'];
-    final args = <Object?>[];
-    if (feedId != null) {
-      where.add('a.feedId = ?');
-      args.add(feedId);
-    }
-    if (topic != null) {
-      where.add(_hasTag);
-      args.add('%,${topic.name},%');
-    }
-    final rows = await _db.rawQuery(
-      'SELECT a.id FROM articles a JOIN feeds f ON f.id = a.feedId '
-      'WHERE ${where.join(' AND ')}',
-      args,
+  /// Stars an article to read later, or unstars it.
+  Future<void> setStarred(int articleId, bool starred) async {
+    await _db.update(
+      'articles',
+      {'starred': starred ? 1 : 0},
+      where: 'id = ?',
+      whereArgs: [articleId],
     );
-    final ids = [for (final row in rows) row['id'] as int];
-    await _setReadIds(ids, true);
-    return ids;
-  }
-
-  /// Undoes [markAllRead].
-  Future<void> markUnread(List<int> ids) => _setReadIds(ids, false);
-
-  Future<void> _setReadIds(List<int> ids, bool isRead) async {
-    // SQLite limits how many arguments one statement takes.
-    for (var i = 0; i < ids.length; i += 500) {
-      final chunk = ids.sublist(i, (i + 500).clamp(0, ids.length));
-      await _db.update(
-        'articles',
-        {'isRead': isRead ? 1 : 0},
-        where: 'id IN (${List.filled(chunk.length, '?').join(',')})',
-        whereArgs: chunk,
-      );
-    }
   }
 
   /// Hides an article from the inbox (see the schema note on isDeleted).
