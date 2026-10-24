@@ -49,9 +49,11 @@ The icon is that ball, painted in gold and purple brush strokes.
   later; **Starred** lists them. Reading an article doesn't unstar it.
 - **Gestures**: in the inbox, swipe right to toggle read, swipe left to
   delete (with undo). Deleted articles don't come back on the next refresh.
-  In an article (or a novel chapter), swipe right anywhere to close it: the
-  page follows your finger and closes past a third of the screen or on a
-  quick flick.
+  Pinch out (zoom out) with two fingers anywhere on a page to close it: the
+  page shrinks with your fingers and closes once it's small enough. In an
+  article, swipe left for the next one in the inbox and right for the one
+  before; in a novel chapter, left is the next chapter and right the
+  previous one.
 - **Sample images**: every inbox card shows a picture when the article has
   one: from the feed (Media RSS, image enclosures or the first image in the
   post), else the article page's preview image (`og:image`), else for arXiv
@@ -102,7 +104,19 @@ the two sides; the choice is remembered.
   its chapters or its chapter list.
 - **Novel page**: details and every chapter, oldest first, loaded from the
   site 25 at a time as they scroll into view. **Show in list** jumps to the
-  chapter you're on; the 123 button goes to any chapter number.
+  chapter you're on; the 123 button goes to any chapter number. Chapters
+  seen once stay listed offline. Pinching out of a chapter always lands
+  here.
+- **Download for offline** (novel page): saves every chapter, for
+  completed novels or ones with thousands of chapters. ranobes.net allows a
+  chapter every second or two, so it runs in the background (Android) with
+  a progress notification, and can be paused, resumed or removed. If the
+  site puts up its human check, the download waits; **Verify and carry on**
+  opens the check, and it resumes once it's passed. When new chapters come
+  out, **Get N more** fetches just those.
+- **Import EPUB** (library): adds a book from an EPUB file (EPUB 2 or 3),
+  with its cover, details and chapters in reading order. Imported books
+  live on the phone and never touch the site.
 - **Reader**: the chapter's text only (the ads the site puts inside it are
   removed), with its own text size, line spacing and serif or sans font
   (the Aa button). It keeps the screen on, remembers how far down the

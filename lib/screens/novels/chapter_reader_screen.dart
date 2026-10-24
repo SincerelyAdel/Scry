@@ -10,10 +10,9 @@ import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../theme.dart';
-import '../../widgets/swipe_back.dart';
+import '../../widgets/page_gestures.dart';
 import '../../widgets/ui.dart';
 import 'human_check_screen.dart';
-import 'novel_screen.dart';
 
 /// Reads a novel chapter by chapter. Remembers how far down the chapter
 /// you are, keeps the screen on, and has the next chapter ready before you
@@ -200,7 +199,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(pad, 12, pad, 48),
               child: SelectionArea(
-                child: SwipeBackArea(
+                child: SwipeNavArea(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -247,70 +246,74 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
       );
     }
 
+    final canMove = chapter != null && !_loading;
     return Scaffold(
-      body: Stack(
-        children: [
-          CustomScrollView(
-            controller: _scroll,
-            slivers: [
-              SliverAppBar(
-                floating: true,
-                snap: true,
-                title: Text(
-                  chapter?.title ?? _novel.title,
-                  style: const TextStyle(fontSize: 16),
-                ),
-                actions: [
-                  IconButton(
-                    tooltip: 'Text',
-                    icon: const Icon(Icons.text_fields),
-                    onPressed: _textSettings,
+      body: SwipeNav(
+        onNext: canMove && chapter.nextUrl != null ? _next : null,
+        onPrevious: canMove && chapter.prevUrl != null ? _previous : null,
+        nextLabel: 'Next chapter',
+        previousLabel: 'Previous chapter',
+        child: Stack(
+          children: [
+            CustomScrollView(
+              controller: _scroll,
+              slivers: [
+                SliverAppBar(
+                  floating: true,
+                  snap: true,
+                  title: Text(
+                    chapter?.title ?? _novel.title,
+                    style: const TextStyle(fontSize: 16),
                   ),
-                  IconButton(
-                    tooltip: 'Chapters',
-                    icon: const Icon(Icons.format_list_numbered),
-                    onPressed: () => Navigator.of(context).push(
-                      SwipeBackRoute<void>(
-                        builder: (_) => NovelScreen(novelId: _novel.id!),
-                      ),
-                    ),
-                  ),
-                  if (chapter != null)
+                  actions: [
                     IconButton(
-                      tooltip: 'Open on ranobes.net',
-                      icon: const Icon(Icons.open_in_browser),
-                      onPressed: () => launchUrl(
-                        Uri.parse(chapter.url),
-                        mode: LaunchMode.externalApplication,
-                      ),
+                      tooltip: 'Text',
+                      icon: const Icon(Icons.text_fields),
+                      onPressed: _textSettings,
                     ),
-                ],
+                    IconButton(
+                      tooltip: 'Chapters',
+                      icon: const Icon(Icons.format_list_numbered),
+                      // The novel's page is always under the reader.
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    if (chapter != null && !_novel.isImported)
+                      IconButton(
+                        tooltip: 'Open on ranobes.net',
+                        icon: const Icon(Icons.open_in_browser),
+                        onPressed: () => launchUrl(
+                          Uri.parse(chapter.url),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                      ),
+                  ],
+                ),
+                content,
+              ],
+            ),
+            // Loading the next chapter over the current one.
+            if (_loading && chapter != null)
+              const Positioned(
+                left: 0,
+                right: 0,
+                top: 0,
+                child: LinearProgressIndicator(minHeight: 2),
               ),
-              content,
-            ],
-          ),
-          // Loading the next chapter over the current one.
-          if (_loading && chapter != null)
-            const Positioned(
+            Positioned(
               left: 0,
               right: 0,
-              top: 0,
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: ValueListenableBuilder<double>(
-              valueListenable: _progress,
-              builder: (_, value, _) => LinearProgressIndicator(
-                value: value,
-                minHeight: 2,
-                backgroundColor: Colors.transparent,
+              bottom: 0,
+              child: ValueListenableBuilder<double>(
+                valueListenable: _progress,
+                builder: (_, value, _) => LinearProgressIndicator(
+                  value: value,
+                  minHeight: 2,
+                  backgroundColor: Colors.transparent,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

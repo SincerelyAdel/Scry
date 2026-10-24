@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../widgets/swipe_back.dart';
 import '../data/feed_repository.dart';
 import '../models/article.dart';
 import '../models/paper_figure.dart';
@@ -16,14 +15,23 @@ import '../utils/arxiv.dart';
 import '../utils/html_text.dart';
 import '../widgets/html_view.dart';
 import '../widgets/net_image.dart';
+import '../widgets/page_gestures.dart';
 import '../widgets/ui.dart';
 
 /// Full article reader. Opening an article marks it read.
 class ArticleDetailScreen extends StatefulWidget {
-  const ArticleDetailScreen({super.key, required this.article});
+  const ArticleDetailScreen({
+    super.key,
+    required this.article,
+    this.siblings = const [],
+  });
 
   /// The lightweight row from the inbox; the full body is loaded here.
   final Article article;
+
+  /// The inbox list it was opened from, as it was then; swiping sideways
+  /// moves through it.
+  final List<Article> siblings;
 
   @override
   State<ArticleDetailScreen> createState() => _ArticleDetailScreenState();
@@ -177,6 +185,26 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
     );
   }
 
+  /// The article [step] places along in the inbox list, if any.
+  Article? _neighbour(int step) {
+    final list = widget.siblings;
+    final i = list.indexWhere((a) => a.id == _article.id);
+    final j = i + step;
+    return i < 0 || j < 0 || j >= list.length ? null : list[j];
+  }
+
+  void _go(int step) {
+    final article = _neighbour(step);
+    if (article == null) return;
+    Navigator.of(context).pushReplacement(
+      PinchBackRoute<void>(
+        slideFrom: step,
+        builder: (_) =>
+            ArticleDetailScreen(article: article, siblings: widget.siblings),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
@@ -222,130 +250,136 @@ class _ArticleDetailScreenState extends State<ArticleDetailScreen> {
             ),
         ],
       ),
-      body: SelectionArea(
-        child: SwipeBackArea(
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(
-              pagePadding(context) + 4,
-              8,
-              pagePadding(context) + 4,
-              40,
-            ),
-            children: [
-              if (_article.feedTitle != null)
-                Row(
-                  children: [
-                    Icon(Icons.rss_feed, size: 15, color: c.accent),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        _article.feedTitle!.toUpperCase(),
-                        style: TextStyle(
-                          color: c.accent,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 0.9,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              const SizedBox(height: 12),
-              Text(
-                _article.title,
-                style: TextStyle(
-                  fontFamily: kSerif,
-                  color: c.text,
-                  fontSize: 28,
-                  height: 1.25,
-                  fontWeight: FontWeight.w500,
-                ),
+      body: SwipeNav(
+        onNext: _neighbour(1) == null ? null : () => _go(1),
+        onPrevious: _neighbour(-1) == null ? null : () => _go(-1),
+        nextLabel: 'Next article',
+        previousLabel: 'Previous article',
+        child: SelectionArea(
+          child: SwipeNavArea(
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                pagePadding(context) + 4,
+                8,
+                pagePadding(context) + 4,
+                40,
               ),
-              const SizedBox(height: 12),
-              Text(
-                [
-                  if (_article.author != null) 'By ${_article.author}',
-                  fullDate(_article.displayDate),
-                ].join(' · '),
-                style: TextStyle(color: c.muted, fontSize: 14),
-              ),
-              if (!_loading) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: articleTags(
-                    context,
-                    tags: _article.tags,
-                    paper: _paperId != null,
-                    readMinutes: _article.readMinutes,
-                    linkOnly:
-                        hasLink &&
-                        _paperId == null &&
-                        _html == null &&
-                        !_fetchingFull,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 20),
-              Divider(color: c.border),
-              const SizedBox(height: 20),
-              if (_loading)
-                const Center(child: CircularProgressIndicator())
-              else if (_paperId != null)
-                ..._paper(c, fontSize)
-              else ...[
-                ..._leadImage(),
-                if (_fetchingFull) ...[
+              children: [
+                if (_article.feedTitle != null)
                   Row(
                     children: [
-                      const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        'Fetching the full article...',
-                        style: TextStyle(
-                          fontFamily: kSerif,
-                          fontStyle: FontStyle.italic,
-                          color: c.muted,
-                          fontSize: fontSize * 0.9,
+                      Icon(Icons.rss_feed, size: 15, color: c.accent),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          _article.feedTitle!.toUpperCase(),
+                          style: TextStyle(
+                            color: c.accent,
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.9,
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 20),
-                ],
-                if (_html == null && !_fetchingFull)
-                  Text(
-                    'This feed only provides a link for this article.',
-                    style: TextStyle(
-                      fontFamily: kSerif,
-                      fontStyle: FontStyle.italic,
-                      color: c.muted,
-                      fontSize: fontSize,
-                    ),
-                  )
-                else if (_html != null)
-                  HtmlView(
-                    html: _html!,
-                    baseUrl: _article.url,
-                    fontSize: fontSize,
-                  ),
-              ],
-              if (hasLink) ...[
-                const SizedBox(height: 36),
-                Center(
-                  child: FilledButton.icon(
-                    onPressed: _openInBrowser,
-                    icon: const Icon(Icons.open_in_browser),
-                    label: const Text('Open in browser'),
+                const SizedBox(height: 12),
+                Text(
+                  _article.title,
+                  style: TextStyle(
+                    fontFamily: kSerif,
+                    color: c.text,
+                    fontSize: 28,
+                    height: 1.25,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
+                const SizedBox(height: 12),
+                Text(
+                  [
+                    if (_article.author != null) 'By ${_article.author}',
+                    fullDate(_article.displayDate),
+                  ].join(' · '),
+                  style: TextStyle(color: c.muted, fontSize: 14),
+                ),
+                if (!_loading) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: articleTags(
+                      context,
+                      tags: _article.tags,
+                      paper: _paperId != null,
+                      readMinutes: _article.readMinutes,
+                      linkOnly:
+                          hasLink &&
+                          _paperId == null &&
+                          _html == null &&
+                          !_fetchingFull,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 20),
+                Divider(color: c.border),
+                const SizedBox(height: 20),
+                if (_loading)
+                  const Center(child: CircularProgressIndicator())
+                else if (_paperId != null)
+                  ..._paper(c, fontSize)
+                else ...[
+                  ..._leadImage(),
+                  if (_fetchingFull) ...[
+                    Row(
+                      children: [
+                        const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Fetching the full article...',
+                          style: TextStyle(
+                            fontFamily: kSerif,
+                            fontStyle: FontStyle.italic,
+                            color: c.muted,
+                            fontSize: fontSize * 0.9,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                  ],
+                  if (_html == null && !_fetchingFull)
+                    Text(
+                      'This feed only provides a link for this article.',
+                      style: TextStyle(
+                        fontFamily: kSerif,
+                        fontStyle: FontStyle.italic,
+                        color: c.muted,
+                        fontSize: fontSize,
+                      ),
+                    )
+                  else if (_html != null)
+                    HtmlView(
+                      html: _html!,
+                      baseUrl: _article.url,
+                      fontSize: fontSize,
+                    ),
+                ],
+                if (hasLink) ...[
+                  const SizedBox(height: 36),
+                  Center(
+                    child: FilledButton.icon(
+                      onPressed: _openInBrowser,
+                      icon: const Icon(Icons.open_in_browser),
+                      label: const Text('Open in browser'),
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

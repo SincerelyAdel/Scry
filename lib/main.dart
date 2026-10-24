@@ -31,14 +31,15 @@ Future<void> main() async {
   await BackgroundSync.initialize();
   unawaited(BackgroundSync.apply(settings.syncInterval));
   unawaited(BackgroundSync.applyChapterAlerts(settings.chapterAlerts));
-  final openNovelId = await ChapterAlerts.launchNovelId();
+  final launch = await ChapterAlerts.launchTarget();
 
   runApp(
     ScryApp(
       repository: repository,
       settings: settings,
       novels: novels,
-      openNovelId: openNovelId,
+      openNovelId: launch?.novelId,
+      openNovelPage: launch?.page ?? false,
     ),
   );
 }

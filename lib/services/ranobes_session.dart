@@ -57,6 +57,9 @@ abstract final class RanobesSession {
 
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
+    // Background work may reuse an isolate from before the check was
+    // passed in the app; read what's stored now.
+    await prefs.reload();
     _userAgent = prefs.getString(_kUserAgent);
     _cookies = prefs.getString(_kCookies);
   }

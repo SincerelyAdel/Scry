@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/novel.dart';
+import '../../services/book_picker.dart';
 import '../../services/chapter_alerts.dart';
 import '../../state/novels_provider.dart';
 import '../../theme.dart';
-import '../../widgets/swipe_back.dart';
+import '../../widgets/page_gestures.dart';
 import '../../widgets/ui.dart';
 import 'add_novel_screen.dart';
 import 'chapter_reader_screen.dart';
@@ -53,9 +54,40 @@ class _LibraryScreenState extends State<LibraryScreen> {
     }
   }
 
+  bool _importing = false;
+
+  /// Adds a book from an EPUB file, then opens it.
+  Future<void> _import() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final novels = context.read<NovelsProvider>();
+    final navigator = Navigator.of(context);
+    try {
+      final bytes = await BookPicker.pick();
+      if (bytes == null) return;
+      setState(() => _importing = true);
+      final novel = await novels.importBook(bytes);
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: Text(
+              'Imported ${novel.title}: ${novel.chapterCount} chapters',
+            ),
+          ),
+        );
+      navigator.push(
+        PinchBackRoute<void>(builder: (_) => NovelScreen(novelId: novel.id!)),
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text("Couldn't import it: $e")));
+    } finally {
+      if (mounted) setState(() => _importing = false);
+    }
+  }
+
   void _add() =>
       Navigator.of(context)
-          .push(SwipeBackRoute<void>(builder: (_) => const AddNovelScreen()));
+          .push(PinchBackRoute<void>(builder: (_) => const AddNovelScreen()));
 
   @override
   Widget build(BuildContext context) {
@@ -71,11 +103,26 @@ class _LibraryScreenState extends State<LibraryScreen> {
       body = EmptyState(
         icon: Icons.auto_stories_outlined,
         title: 'No novels yet',
-        message: "Search ranobes.net or paste a novel's link.",
-        action: FilledButton.icon(
-          onPressed: _add,
-          icon: const Icon(Icons.add),
-          label: const Text('Add novel'),
+        message:
+            "Search ranobes.net or paste a novel's link, or import "
+            'an EPUB book.',
+        action: Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          alignment: WrapAlignment.center,
+          children: [
+            FilledButton.icon(
+              onPressed: _add,
+              icon: const Icon(Icons.add),
+              label: const Text('Add novel'),
+            ),
+            if (BookPicker.supported)
+              OutlinedButton.icon(
+                onPressed: _importing ? null : _import,
+                icon: const Icon(Icons.file_open_outlined),
+                label: const Text('Import EPUB'),
+              ),
+          ],
         ),
       );
     } else {
@@ -99,11 +146,19 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Novels'),
+        actions: [
+          if (BookPicker.supported)
+            IconButton(
+              tooltip: 'Import EPUB',
+              icon: const Icon(Icons.file_open_outlined),
+              onPressed: _importing ? null : _import,
+            ),
+        ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(2),
           child: SizedBox(
             height: 2,
-            child: novels.checking
+            child: novels.checking || _importing
                 ? const LinearProgressIndicator(minHeight: 2)
                 : null,
           ),
@@ -156,7 +211,7 @@ class NovelCard extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       glow: fresh > 0,
       onTap: () => Navigator.of(context).push(
-        SwipeBackRoute<void>(builder: (_) => NovelScreen(novelId: novel.id!)),
+        PinchBackRoute<void>(builder: (_) => NovelScreen(novelId: novel.id!)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -260,16 +315,26 @@ class NovelCard extends StatelessWidget {
 
 /// Opens the reader where [novel] was left, or at its first chapter, or at
 /// chapter [url] (number [number]) when given.
+///
+/// The reader always sits on the novel's page, which pinching out of it
+/// goes back to; [fromNovelPage] says it's open already.
 Future<void> openReader(
   BuildContext context,
   Novel novel, {
   String? url,
   int? number,
+  bool fromNovelPage = false,
 }) {
   // Its new chapters are being read; the notification has done its job.
   ChapterAlerts.dismiss(novel);
-  return Navigator.of(context).push(
-    SwipeBackRoute<void>(
+  final navigator = Navigator.of(context);
+  if (!fromNovelPage) {
+    navigator.push(
+      PinchBackRoute<void>(builder: (_) => NovelScreen(novelId: novel.id!)),
+    );
+  }
+  return navigator.push(
+    PinchBackRoute<void>(
       builder: (_) => ChapterReaderScreen(
         novelId: novel.id!,
         url: url ?? novel.chapterUrl,

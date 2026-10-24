@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/novel.dart';
+import '../../models/novel_download.dart';
+import '../../services/chapter_alerts.dart';
 import '../../services/feed_fetcher.dart';
 import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
@@ -43,13 +45,33 @@ class _NovelScreenState extends State<NovelScreen> {
   /// The count the list is laid out for; follows the site when it changes.
   int _count = 0;
 
+  /// Chapters recorded on this device (browsed, downloaded or imported),
+  /// so the list works offline.
+  final Map<int, ChapterRef> _index = {};
+
   @override
   void initState() {
     super.initState();
     final novel = context.read<NovelsProvider>().byId(widget.novelId);
     _count = novel?.chapterCount ?? 0;
-    // Shows the newest chapters' page first, which also corrects the count.
-    _loadPage(1);
+    _loadIndex(novel);
+  }
+
+  Future<void> _loadIndex(Novel? novel) async {
+    if (novel == null) return;
+    final novels = context.read<NovelsProvider>();
+    final refs = await novels.repository.chapterIndex(novel.id!);
+    if (!mounted) return;
+    setState(() {
+      for (final ref in refs) {
+        _index[ref.number] = ref;
+        _chapters.putIfAbsent(ref.number, () => ref);
+      }
+      if (_index.length > _count) _count = _index.length;
+    });
+    // Shows the newest chapters' page first, which also corrects the
+    // count. Imported books have nothing online.
+    if (!novel.isImported) _loadPage(1);
   }
 
   @override
@@ -64,7 +86,11 @@ class _NovelScreenState extends State<NovelScreen> {
     final novel = novels.byId(widget.novelId);
     if (novel == null) return;
     try {
-      final result = await novels.repository.chapterPage(novel.bookId, page);
+      final result = await novels.repository.chapterPage(
+        novel.bookId,
+        page,
+        novelId: novel.id,
+      );
       if (!mounted) return;
       setState(() {
         _failed.remove(page);
@@ -78,13 +104,16 @@ class _NovelScreenState extends State<NovelScreen> {
         if (changed) {
           // New chapters shift every page; start over with the new count.
           _count = result.chapterCount;
-          _chapters.clear();
+          _chapters
+            ..clear()
+            ..addAll(_index);
           _requested
             ..clear()
             ..add(page);
         }
         for (final ref in result.chapters) {
           _chapters[ref.number] = ref;
+          _index[ref.number] = ref;
         }
       });
     } catch (e) {
@@ -147,6 +176,32 @@ class _NovelScreenState extends State<NovelScreen> {
     }
   }
 
+  Future<void> _removeDownload(Novel novel) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove the download?'),
+        content: const Text(
+          'The saved chapters are deleted, apart from the ones you read '
+          'last. Your place in the novel stays.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      await context.read<NovelsProvider>().removeDownload(novel);
+    }
+  }
+
   Future<void> _remove(Novel novel) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -176,8 +231,10 @@ class _NovelScreenState extends State<NovelScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
-    final novel = context.watch<NovelsProvider>().byId(widget.novelId);
+    final novels = context.watch<NovelsProvider>();
+    final novel = novels.byId(widget.novelId);
     if (novel == null) return const Scaffold();
+    final download = novels.downloadOf(novel.id);
     final pad = pagePadding(context);
 
     return Scaffold(
@@ -198,11 +255,22 @@ class _NovelScreenState extends State<NovelScreen> {
                 );
               } else if (v == 'remove') {
                 _remove(novel);
+              } else if (v == 'undownload') {
+                _removeDownload(novel);
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: 'web', child: Text('Open on ranobes.net')),
-              PopupMenuItem(
+            itemBuilder: (_) => [
+              if (!novel.isImported)
+                const PopupMenuItem(
+                  value: 'web',
+                  child: Text('Open on ranobes.net'),
+                ),
+              if (download != null)
+                const PopupMenuItem(
+                  value: 'undownload',
+                  child: Text('Remove download'),
+                ),
+              const PopupMenuItem(
                 value: 'remove',
                 child: Text('Remove from library'),
               ),
@@ -238,7 +306,9 @@ class _NovelScreenState extends State<NovelScreen> {
                   final number = i + 1;
                   final ref = _chapters[number];
                   final page = _pageOf(number);
-                  if (ref == null && !_failed.contains(page)) {
+                  if (ref == null &&
+                      !_failed.contains(page) &&
+                      !novel.isImported) {
                     WidgetsBinding.instance.addPostFrameCallback(
                       (_) => _loadPage(page),
                     );
@@ -259,6 +329,7 @@ class _NovelScreenState extends State<NovelScreen> {
                             novel,
                             url: ref.url,
                             number: number,
+                            fromNovelPage: true,
                           ),
                   );
                 }),
@@ -336,7 +407,7 @@ class _HeaderState extends State<_Header> {
           runSpacing: 10,
           children: [
             FilledButton.icon(
-              onPressed: () => openReader(context, novel),
+              onPressed: () => openReader(context, novel, fromNovelPage: true),
               icon: Icon(
                 novel.started ? Icons.play_arrow_rounded : Icons.menu_book,
               ),
@@ -356,6 +427,8 @@ class _HeaderState extends State<_Header> {
               ),
           ],
         ),
+        const SizedBox(height: 14),
+        _DownloadPanel(novel: novel, count: widget.count),
       ],
     );
 
@@ -495,5 +568,174 @@ class _ChapterRow extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Downloading the whole novel for offline reading: the button, then how
+/// it's going. Imported books say they're on the device.
+class _DownloadPanel extends StatelessWidget {
+  const _DownloadPanel({required this.novel, required this.count});
+
+  final Novel novel;
+  final int count;
+
+  Future<void> _start(BuildContext context) async {
+    final novels = context.read<NovelsProvider>();
+    // The site allows a chapter every second or two.
+    final minutes = (count * 2.2 / 60).ceil();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Download every chapter?'),
+        content: Text(
+          'All $count chapters are saved on this phone, to read without '
+          'a connection. ranobes.net only allows a chapter every second or '
+          'two, so this takes about '
+          '${minutes <= 1 ? 'a minute' : '$minutes minutes'}. It carries '
+          'on in the background, and if the site asks you to prove '
+          "you're human, it waits until you do.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Download'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    if (context.mounted) await ChapterAlerts.requestPermission();
+    await novels.download(novel);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final novels = context.watch<NovelsProvider>();
+    final download = novels.downloadOf(novel.id);
+
+    Widget line(IconData icon, String text, {Color? color}) => Row(
+      children: [
+        Icon(icon, size: 18, color: color ?? c.muted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(color: color ?? c.muted, fontSize: 13.5),
+          ),
+        ),
+      ],
+    );
+
+    if (novel.isImported) {
+      return line(
+        Icons.offline_pin_outlined,
+        'Imported book: every chapter is on this phone',
+      );
+    }
+    if (download == null) {
+      return OutlinedButton.icon(
+        onPressed: count > 0 ? () => _start(context) : null,
+        icon: const Icon(Icons.download_outlined, size: 18),
+        label: const Text('Download for offline'),
+      );
+    }
+    final total = download.total > 0 ? download.total : count;
+    switch (download.state) {
+      case DownloadState.queued:
+      case DownloadState.running:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    download.message ??
+                        'Downloading: ${download.done} of $total chapters',
+                    style: TextStyle(color: c.text, fontSize: 13.5),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => novels.pauseDownload(novel),
+                  child: const Text('Pause'),
+                ),
+              ],
+            ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: download.total > 0 ? download.fraction : null,
+                minHeight: 5,
+              ),
+            ),
+          ],
+        );
+      case DownloadState.needsCheck:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            line(
+              Icons.pause_circle_outline,
+              'Download paused at ${download.done} of $total: ranobes.net '
+              "wants to check you're human",
+              color: c.accent,
+            ),
+            const SizedBox(height: 8),
+            FilledButton.icon(
+              onPressed: () => passHumanCheck(
+                context,
+                Ranobes.chapterListUrl(novel.bookId, 1),
+              ),
+              icon: const Icon(Icons.verified_user_outlined),
+              label: const Text('Verify and carry on'),
+            ),
+          ],
+        );
+      case DownloadState.paused:
+        return Row(
+          children: [
+            Expanded(
+              child: line(
+                Icons.pause_circle_outline,
+                'Download paused at ${download.done} of $total',
+              ),
+            ),
+            TextButton(
+              onPressed: () => novels.download(novel),
+              child: const Text('Resume'),
+            ),
+          ],
+        );
+      case DownloadState.done:
+        final missing = count - download.done;
+        if (missing > 0) {
+          return Row(
+            children: [
+              Expanded(
+                child: line(
+                  Icons.offline_pin_outlined,
+                  '${download.done} of $count chapters saved',
+                ),
+              ),
+              TextButton(
+                onPressed: () => novels.download(novel),
+                child: Text(
+                  missing == 1 ? 'Get the new one' : 'Get $missing more',
+                ),
+              ),
+            ],
+          );
+        }
+        return line(
+          Icons.offline_pin,
+          download.message ?? 'All ${download.done} chapters saved for offline',
+          color: c.success,
+        );
+    }
   }
 }

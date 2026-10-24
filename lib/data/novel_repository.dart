@@ -1,7 +1,13 @@
+import 'dart:io';
 import 'dart:isolate';
 
+import 'package:path/path.dart' as p;
+
 import '../models/novel.dart';
+import '../models/novel_download.dart';
+import '../services/epub.dart';
 import '../services/feed_fetcher.dart';
+import '../services/novel_downloader.dart';
 import '../services/ranobes.dart';
 import 'app_database.dart';
 
@@ -66,7 +72,17 @@ class NovelRepository {
     return (await _db.getNovel(newId))!;
   }
 
-  Future<void> removeNovel(Novel novel) => _db.deleteNovel(novel.id!);
+  Future<void> removeNovel(Novel novel) async {
+    await _db.deleteNovel(novel.id!);
+    final cover = novel.cover;
+    if (novel.isImported && cover != null && !cover.startsWith('http')) {
+      try {
+        await File(cover).delete();
+      } on FileSystemException {
+        // Already gone.
+      }
+    }
+  }
 
   /// Updates the novel's chapter count from the site. Returns the novel
   /// as stored afterwards.
@@ -75,7 +91,9 @@ class NovelRepository {
   /// the library shows them; background checks leave that to
   /// [chaptersToAnnounce].
   Future<Novel> checkForChapters(Novel novel, {bool inApp = true}) async {
-    final page = await chapterPage(novel.bookId, 1);
+    // An imported book has all its chapters already.
+    if (novel.isImported) return novel;
+    final page = await chapterPage(novel.bookId, 1, novelId: novel.id);
     final count = page.chapterCount > 0
         ? page.chapterCount
         : novel.chapterCount;
@@ -94,7 +112,7 @@ class NovelRepository {
   Future<List<Novel>> chaptersToAnnounce() async {
     final fresh = <Novel>[];
     for (final novel in await _db.listNovels()) {
-      if (!novel.started) continue;
+      if (!novel.started || novel.isImported) continue;
       try {
         final updated = await checkForChapters(novel, inApp: false);
         if (updated.unannounced > 0) {
@@ -112,19 +130,30 @@ class NovelRepository {
     return fresh;
   }
 
-  /// One page of the novel's chapter list, newest first.
-  Future<ChapterPage> chapterPage(int bookId, int page) async {
+  /// One page of the novel's chapter list, newest first. With [novelId],
+  /// its chapters are recorded so the list works offline later.
+  Future<ChapterPage> chapterPage(int bookId, int page, {int? novelId}) async {
     final doc = await _fetcher.fetchText(Ranobes.chapterListUrl(bookId, page));
     final parsed = Ranobes.parseChapterList(doc.body);
     if (parsed == null) throw FetchException("Couldn't read the chapter list");
+    if (novelId != null) await _db.saveIndex(novelId, parsed.chapters);
     return parsed;
   }
+
+  /// The chapters recorded so far (from browsing the list, downloading or
+  /// importing), oldest first.
+  Future<List<ChapterRef>> chapterIndex(int novelId) =>
+      _db.chapterIndex(novelId);
 
   /// The chapter at [url]: the saved copy when there is one, else fetched
   /// and saved. A saved last chapter is fetched again in case a newer one
   /// came out since; offline, the saved copy is used.
   Future<ChapterText> chapter(Novel novel, String url) async {
     final saved = await _db.getChapter(url);
+    if (novel.isImported || !url.startsWith('http')) {
+      if (saved != null) return saved;
+      throw FetchException('This chapter is missing from the book');
+    }
     if (saved != null && saved.nextUrl != null) return saved;
     try {
       return await _download(novel, url);
@@ -134,14 +163,21 @@ class NovelRepository {
     }
   }
 
-  /// The novel's first chapter (the site redirects to it).
-  Future<ChapterText> firstChapter(Novel novel) =>
-      _download(novel, Ranobes.firstChapterUrl(novel.bookId));
+  /// The novel's first chapter: the saved one when it's known, else from
+  /// the site (which redirects to it).
+  Future<ChapterText> firstChapter(Novel novel) async {
+    final first = await _db.indexedChapter(novel.id!, 1);
+    if (first != null) {
+      final saved = await _db.getChapter(first.url);
+      if (saved != null || novel.isImported) return chapter(novel, first.url);
+    }
+    return _download(novel, Ranobes.firstChapterUrl(novel.bookId));
+  }
 
   /// Saves the chapter at [url] ahead of time, if it isn't saved yet.
   /// Failures are ignored: it's fetched again when opened.
   Future<void> prefetch(Novel novel, String url) async {
-    if (await _db.getChapter(url) != null) return;
+    if (novel.isImported || await _db.getChapter(url) != null) return;
     try {
       await _download(novel, url);
     } on Exception {
@@ -169,6 +205,100 @@ class NovelRepository {
     );
     await _db.updateNovel(updated);
     return updated;
+  }
+
+  // ------------------------------------------------------------- downloads
+
+  /// Does the downloading, for running it in the app.
+  NovelDownloader downloader() => NovelDownloader(_db, _fetcher);
+
+  Future<NovelDownload?> download(int novelId) => _db.getDownload(novelId);
+
+  Future<List<NovelDownload>> downloads() => _db.listDownloads();
+
+  /// Queues the whole novel for download, or carries on with it.
+  Future<void> queueDownload(Novel novel) async {
+    final existing = await _db.getDownload(novel.id!);
+    await _db.setDownload(
+      (existing ??
+              NovelDownload(
+                novelId: novel.id!,
+                state: DownloadState.queued,
+                total: novel.chapterCount,
+                updatedAt: DateTime.now(),
+              ))
+          .copyWith(state: DownloadState.queued, clearMessage: true),
+    );
+  }
+
+  Future<void> pauseDownload(int novelId) async {
+    final existing = await _db.getDownload(novelId);
+    if (existing == null) return;
+    await _db.setDownload(
+      existing.copyWith(state: DownloadState.paused, clearMessage: true),
+    );
+  }
+
+  /// Stops the download and lets its chapters go, apart from the latest
+  /// read ones.
+  Future<void> removeDownload(int novelId) => _db.removeDownload(novelId);
+
+  /// Carries on with downloads the site's check stopped, once it's passed.
+  Future<void> resumeAfterCheck() =>
+      _db.setDownloadsWhere(DownloadState.needsCheck, DownloadState.queued);
+
+  // ---------------------------------------------------------------- import
+
+  /// Adds [book] to the library with all its chapters. The cover is saved
+  /// as a file in [coverDir].
+  Future<Novel> importBook(EpubBook book, {required String coverDir}) async {
+    // Imported books get negative numbers, so they never clash with the
+    // site's.
+    var bookId = -DateTime.now().millisecondsSinceEpoch;
+    while (await _db.findNovelByBookId(bookId) != null) {
+      bookId--;
+    }
+    String? coverPath;
+    final cover = book.cover;
+    if (cover != null && cover.isNotEmpty) {
+      final file = File(
+        p.join(coverDir, 'book${-bookId}.${book.coverExtension ?? 'jpg'}'),
+      );
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(cover);
+      coverPath = file.path;
+    }
+    String url(int n) => 'epub://${-bookId}/$n';
+    final count = book.chapters.length;
+    final chapters = [
+      for (var i = 0; i < count; i++)
+        ChapterText(
+          url: url(i + 1),
+          title: book.chapters[i].title,
+          novelTitle: book.title,
+          paragraphs: book.chapters[i].paragraphs,
+          prevUrl: i > 0 ? url(i) : null,
+          nextUrl: i + 1 < count ? url(i + 2) : null,
+        ),
+    ];
+    final now = DateTime.now();
+    final id = await _db.insertNovelWithChapters(
+      Novel(
+        url: 'epub://${-bookId}',
+        bookId: bookId,
+        title: book.title,
+        cover: coverPath,
+        author: book.author,
+        status: 'Imported book',
+        description: book.description,
+        chapterCount: count,
+        addedDate: now,
+        lastChecked: now,
+        source: NovelSource.epub,
+      ),
+      chapters,
+    );
+    return (await _db.getNovel(id))!;
   }
 
   Future<ChapterText> _download(Novel novel, String url) async {

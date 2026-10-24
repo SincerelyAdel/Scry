@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 import 'data/feed_repository.dart';
 import 'data/novel_repository.dart';
 import 'screens/home_shell.dart';
 import 'screens/novels/library_screen.dart';
+import 'screens/novels/novel_screen.dart';
 import 'services/background_sync.dart';
 import 'services/chapter_alerts.dart';
 import 'state/article_images.dart';
@@ -15,6 +18,7 @@ import 'state/settings_provider.dart';
 import 'theme.dart';
 import 'widgets/app_header.dart';
 import 'widgets/gold_glow_border.dart';
+import 'widgets/page_gestures.dart';
 
 class ScryApp extends StatefulWidget {
   const ScryApp({
@@ -24,6 +28,7 @@ class ScryApp extends StatefulWidget {
     required this.novels,
     this.refreshOnLaunch = true,
     this.openNovelId,
+    this.openNovelPage = false,
   });
 
   final FeedRepository repository;
@@ -36,6 +41,10 @@ class ScryApp extends StatefulWidget {
   /// A novel to open on launch: the app was started from its new chapter
   /// notification.
   final int? openNovelId;
+
+  /// Open [openNovelId]'s page rather than the reader (from a download
+  /// notification).
+  final bool openNovelPage;
 
   @override
   State<ScryApp> createState() => _ScryAppState();
@@ -56,7 +65,14 @@ class _ScryAppState extends State<ScryApp> {
     _feeds = FeedsProvider(widget.repository);
     _articles = ArticlesProvider(widget.repository, initialSort: _sort);
     _images = ArticleImages(widget.repository);
-    _novels = NovelsProvider(widget.novels)..load();
+    _novels = NovelsProvider(
+      widget.novels,
+      // Android downloads in a background worker; elsewhere, in the app.
+      downloadInApp: BackgroundSync.supported
+          ? null
+          : widget.novels.downloader(),
+      coverDir: () async => p.join(await getDatabasesPath(), 'covers'),
+    )..load();
 
     // The two lists depend on each other: new or deleted articles change
     // feed counts, and feed changes change the inbox.
@@ -77,10 +93,13 @@ class _ScryAppState extends State<ScryApp> {
     if (widget.refreshOnLaunch) _feeds.refreshAll();
 
     ChapterAlerts.onOpen = _openNovel;
+    ChapterAlerts.onOpenPage = _openNovelPage;
     final launchNovel = widget.openNovelId;
     if (launchNovel != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        _openNovel(launchNovel);
+        widget.openNovelPage
+            ? _openNovelPage(launchNovel)
+            : _openNovel(launchNovel);
       });
     }
   }
@@ -94,6 +113,17 @@ class _ScryAppState extends State<ScryApp> {
     final context = navigatorKey.currentContext;
     if (context == null || !context.mounted) return;
     await openReader(context, novel);
+  }
+
+  /// Opens a novel's page, from its download notification.
+  Future<void> _openNovelPage(int id) async {
+    final novel = await widget.novels.getNovel(id);
+    if (novel == null) return;
+    await widget.settings.setMode(AppMode.novels);
+    navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    await navigatorKey.currentState?.push(
+      PinchBackRoute<void>(builder: (_) => NovelScreen(novelId: id)),
+    );
   }
 
   void _onSettingsChanged() {
@@ -117,6 +147,9 @@ class _ScryAppState extends State<ScryApp> {
   void dispose() {
     widget.settings.removeListener(_onSettingsChanged);
     if (ChapterAlerts.onOpen == _openNovel) ChapterAlerts.onOpen = null;
+    if (ChapterAlerts.onOpenPage == _openNovelPage) {
+      ChapterAlerts.onOpenPage = null;
+    }
     _feeds.dispose();
     _articles.dispose();
     _images.dispose();

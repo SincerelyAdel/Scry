@@ -5,6 +5,8 @@ import 'package:scry/app.dart';
 import 'package:scry/data/app_database.dart';
 import 'package:scry/data/feed_repository.dart';
 import 'package:scry/data/novel_repository.dart';
+import 'package:scry/screens/article_detail_screen.dart';
+import 'package:scry/widgets/article_tile.dart';
 import 'package:scry/state/settings_provider.dart';
 
 import 'support/fakes.dart';
@@ -204,7 +206,25 @@ void main() {
     expect(find.text('Mark all read'), findsNothing);
   });
 
-  testWidgets('swiping right closes an article', (tester) async {
+  /// Two fingers pinching in (zooming out) over [at].
+  Future<void> pinchIn(
+    WidgetTester tester,
+    Offset at, {
+    double by = 120,
+  }) async {
+    final left = await tester.startGesture(at - const Offset(150, 0));
+    final right = await tester.startGesture(at + const Offset(150, 0));
+    for (var i = 0; i < 6; i++) {
+      await left.moveBy(Offset(by / 6, 0));
+      await right.moveBy(Offset(-by / 6, 0));
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    await left.up();
+    await right.up();
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('pinching out closes an article', (tester) async {
     await seedFeeds(tester);
     await pumpApp(tester);
 
@@ -212,36 +232,71 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Open in browser'), findsOneWidget);
 
-    await tester.fling(
-      find.textContaining('Full body here.'),
-      const Offset(400, 0),
-      1500,
-    );
-    await tester.pumpAndSettle();
+    await pinchIn(tester, tester.getCenter(find.textContaining('Full body')));
     expect(find.text('Open in browser'), findsNothing);
     expect(find.text('First post'), findsOneWidget);
   });
 
-  testWidgets('a quick swipe over the text closes the article too', (
-    tester,
-  ) async {
+  testWidgets('a small pinch leaves the article open', (tester) async {
     await seedFeeds(tester);
     await pumpApp(tester);
     await tester.tap(find.text('Second post'));
     await tester.pumpAndSettle();
 
-    // One big step, as a fast swipe arrives: text selection, which also
-    // follows sideways drags, must not take it.
-    final gesture = await tester.startGesture(
-      tester.getCenter(find.textContaining('Full body here.')),
+    await pinchIn(
+      tester,
+      tester.getCenter(find.textContaining('Full body')),
+      by: 30,
     );
-    await gesture.moveBy(const Offset(400, 0));
-    await gesture.up();
-    await tester.pumpAndSettle();
-    expect(find.text('Open in browser'), findsNothing);
+    expect(find.text('Open in browser'), findsOneWidget);
   });
 
-  testWidgets('a short sideways drag leaves the article open', (tester) async {
+  testWidgets('swiping sideways moves between articles', (tester) async {
+    await seedFeeds(tester);
+    await pumpApp(tester);
+    // The inbox order, top to bottom.
+    final tiles = find.byType(ArticleTile).evaluate().toList()
+      ..sort(
+        (a, b) => tester
+            .getTopLeft(find.byWidget(a.widget))
+            .dy
+            .compareTo(tester.getTopLeft(find.byWidget(b.widget)).dy),
+      );
+    final titles = [
+      for (final t in tiles) (t.widget as ArticleTile).article.title,
+    ];
+    final top = titles[0];
+    final below = titles[1];
+
+    // Titles on the open article (the inbox stays painted beneath it).
+    Finder onPage(String title) => find.descendant(
+      of: find.byType(ArticleDetailScreen),
+      matching: find.text(title),
+    );
+
+    await tester.tap(find.text(top));
+    await tester.pumpAndSettle();
+    expect(onPage(top), findsOneWidget);
+
+    // Left for the next. One big step, as a fast swipe arrives: text
+    // selection, which also follows sideways drags, must not take it.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byType(ListView).last),
+    );
+    await gesture.moveBy(const Offset(-400, 0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(onPage(below), findsOneWidget);
+    expect(onPage(top), findsNothing);
+
+    // Right goes back.
+    await tester.fling(find.byType(ListView).last, const Offset(400, 0), 1500);
+    await tester.pumpAndSettle();
+    expect(onPage(top), findsOneWidget);
+    expect(find.text('Open in browser'), findsOneWidget);
+  });
+
+  testWidgets('a short sideways drag stays on the article', (tester) async {
     await seedFeeds(tester);
     await pumpApp(tester);
     await tester.tap(find.text('Second post'));
@@ -249,11 +304,12 @@ void main() {
 
     await tester.timedDrag(
       find.textContaining('Full body here.'),
-      const Offset(80, 0),
+      const Offset(-60, 0),
       const Duration(milliseconds: 600),
     );
     await tester.pumpAndSettle();
     expect(find.text('Open in browser'), findsOneWidget);
+    expect(find.textContaining('Full body here.'), findsOneWidget);
   });
 
   testWidgets('novels: switch sides, continue reading, next chapter', (
@@ -298,11 +354,35 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Chapter 2 text, long enough to read.'), findsOneWidget);
 
+    // A swipe left is the next chapter, right the one before.
+    await tester.fling(
+      find.text('Chapter 2 text, long enough to read.'),
+      const Offset(-400, 0),
+      1500,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Chapter 3 text, long enough to read.'), findsOneWidget);
+    await tester.fling(
+      find.text('Chapter 3 text, long enough to read.'),
+      const Offset(400, 0),
+      1500,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Chapter 2 text, long enough to read.'), findsOneWidget);
+
     await tester.ensureVisible(find.text('Next chapter'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Next chapter'));
     await tester.pumpAndSettle();
     expect(find.text('Chapter 3 text, long enough to read.'), findsOneWidget);
+
+    // Pinching out goes to the novel's page, under the reader.
+    await pinchIn(
+      tester,
+      tester.getCenter(find.text('Chapter 3 text, long enough to read.')),
+    );
+    expect(find.text('Chapter 3 text, long enough to read.'), findsNothing);
+    expect(find.text('CHAPTERS'), findsOneWidget);
 
     await tester.pageBack();
     await tester.pumpAndSettle();

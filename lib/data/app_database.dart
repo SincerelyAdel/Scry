@@ -5,6 +5,7 @@ import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
 import '../models/novel.dart';
+import '../models/novel_download.dart';
 import '../models/paper_figure.dart';
 import '../models/topic.dart';
 import '../utils/arxiv.dart';
@@ -22,7 +23,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 11;
+  static const _version = 12;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -93,6 +94,7 @@ class AppDatabase {
       'CREATE INDEX idx_articles_date ON articles(isDeleted, pubDate)',
     );
     await _createNovelTables(db);
+    await _addDownloadTables(db);
   }
 
   /// Added in version 7: the chapter count when the novel was last read,
@@ -197,6 +199,48 @@ class AppDatabase {
     // Versions 9 to 11 added the UVM and Bio tags and refined their words;
     // tag existing articles again.
     if (from >= 4 && from < 11) await _backfillTags(db);
+    if (from < 12) await _addDownloadTables(db);
+  }
+
+  /// Added in version 12: whole novels downloaded for offline reading,
+  /// and novels imported from EPUB files.
+  ///
+  /// - novels.source is 'ranobes' or 'epub'.
+  /// - chapters.keep is 1 for downloaded chapters, which are never trimmed.
+  /// - chapter_index is every chapter's number, link and title, so the
+  ///   chapter list works offline.
+  /// - downloads is each download's progress, shared with the background
+  ///   worker doing it.
+  static Future<void> _addDownloadTables(DatabaseExecutor db) async {
+    await db.execute(
+      "ALTER TABLE novels ADD COLUMN source TEXT NOT NULL DEFAULT 'ranobes'",
+    );
+    await db.execute(
+      'ALTER TABLE chapters ADD COLUMN keep INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute('''
+      CREATE TABLE chapter_index (
+        novelId INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
+        number INTEGER NOT NULL,
+        url TEXT NOT NULL,
+        title TEXT NOT NULL,
+        date INTEGER,
+        PRIMARY KEY (novelId, number)
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_chapter_index_url ON chapter_index(url)',
+    );
+    await db.execute('''
+      CREATE TABLE downloads (
+        novelId INTEGER PRIMARY KEY REFERENCES novels(id) ON DELETE CASCADE,
+        state TEXT NOT NULL,
+        done INTEGER NOT NULL DEFAULT 0,
+        total INTEGER NOT NULL DEFAULT 0,
+        message TEXT,
+        updatedAt INTEGER NOT NULL
+      )
+    ''');
   }
 
   /// Added in version 4: tags from each article's own words.
@@ -663,31 +707,239 @@ class AppDatabase {
   }
 
   /// Keeps a chapter for offline reading. Each novel keeps its
-  /// [keepPerNovel] most recently fetched chapters.
+  /// [keepPerNovel] most recently fetched chapters, besides the ones
+  /// downloaded on purpose ([keep]), which stay until the download is
+  /// removed.
   Future<void> saveChapter(
     int novelId,
     ChapterText chapter, {
     int keepPerNovel = 60,
+    bool keep = false,
   }) async {
-    await _db.insert('chapters', {
-      'url': chapter.url,
-      'novelId': novelId,
-      'title': chapter.title,
-      'novelTitle': chapter.novelTitle,
-      'body': chapter.paragraphs.join('\n\n'),
-      'prevUrl': chapter.prevUrl,
-      'nextUrl': chapter.nextUrl,
-      'fetchedAt': DateTime.now().millisecondsSinceEpoch,
-    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    // Reading a downloaded chapter again mustn't make it trimmable.
+    await _db.rawInsert(
+      '''
+      INSERT OR REPLACE INTO chapters
+        (url, novelId, title, novelTitle, body, prevUrl, nextUrl, fetchedAt,
+         keep)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?,
+        MAX(?, COALESCE((SELECT keep FROM chapters WHERE url = ?), 0)))
+    ''',
+      [
+        chapter.url,
+        novelId,
+        chapter.title,
+        chapter.novelTitle,
+        chapter.paragraphs.join('\n\n'),
+        chapter.prevUrl,
+        chapter.nextUrl,
+        DateTime.now().millisecondsSinceEpoch,
+        keep ? 1 : 0,
+        chapter.url,
+      ],
+    );
+    if (!keep) await _trimChapters(novelId, keepPerNovel);
+  }
+
+  Future<void> _trimChapters(int novelId, int keepPerNovel) async {
     await _db.rawDelete(
       '''
-      DELETE FROM chapters WHERE novelId = ? AND url NOT IN (
-        SELECT url FROM chapters WHERE novelId = ?
+      DELETE FROM chapters WHERE novelId = ? AND keep = 0 AND url NOT IN (
+        SELECT url FROM chapters WHERE novelId = ? AND keep = 0
         ORDER BY fetchedAt DESC LIMIT ?
       )
     ''',
       [novelId, novelId, keepPerNovel],
     );
+  }
+
+  // ------------------------------------------------- chapter index, downloads
+
+  /// Records chapters from the novel's chapter list.
+  Future<void> saveIndex(int novelId, Iterable<ChapterRef> chapters) async {
+    final batch = _db.batch();
+    for (final c in chapters) {
+      batch.insert('chapter_index', {
+        'novelId': novelId,
+        'number': c.number,
+        'url': c.url,
+        'title': c.title,
+        'date': c.date?.millisecondsSinceEpoch,
+      }, conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  /// Every chapter recorded for the novel, oldest first.
+  Future<List<ChapterRef>> chapterIndex(int novelId) async {
+    final rows = await _db.query(
+      'chapter_index',
+      where: 'novelId = ?',
+      whereArgs: [novelId],
+      orderBy: 'number',
+    );
+    return rows.map(_chapterRef).toList();
+  }
+
+  /// The recorded chapter [number] of the novel.
+  Future<ChapterRef?> indexedChapter(int novelId, int number) async {
+    final rows = await _db.query(
+      'chapter_index',
+      where: 'novelId = ? AND number = ?',
+      whereArgs: [novelId, number],
+    );
+    return rows.isEmpty ? null : _chapterRef(rows.first);
+  }
+
+  static ChapterRef _chapterRef(Map<String, Object?> row) => ChapterRef(
+    url: row['url'] as String,
+    title: row['title'] as String,
+    number: row['number'] as int,
+    date: row['date'] is int
+        ? DateTime.fromMillisecondsSinceEpoch(row['date'] as int)
+        : null,
+  );
+
+  /// Recorded chapters not downloaded yet, oldest first. Chapters already
+  /// saved from reading count as downloaded from now on.
+  Future<List<ChapterRef>> chaptersToDownload(
+    int novelId, {
+    int limit = 50,
+  }) async {
+    await _db.rawUpdate(
+      '''
+      UPDATE chapters SET keep = 1 WHERE novelId = ? AND keep = 0
+        AND url IN (SELECT url FROM chapter_index WHERE novelId = ?)
+    ''',
+      [novelId, novelId],
+    );
+    final rows = await _db.rawQuery(
+      '''
+      SELECT i.* FROM chapter_index i
+        LEFT JOIN chapters c ON c.url = i.url
+      WHERE i.novelId = ? AND c.url IS NULL
+      ORDER BY i.number LIMIT ?
+    ''',
+      [novelId, limit],
+    );
+    return rows.map(_chapterRef).toList();
+  }
+
+  /// How many of the novel's recorded chapters are downloaded.
+  Future<int> downloadedCount(int novelId) async {
+    final rows = await _db.rawQuery(
+      '''
+      SELECT COUNT(*) AS n FROM chapter_index i
+        JOIN chapters c ON c.url = i.url AND c.keep = 1
+      WHERE i.novelId = ?
+    ''',
+      [novelId],
+    );
+    return rows.first['n'] as int;
+  }
+
+  Future<NovelDownload?> getDownload(int novelId) async {
+    final rows = await _db.query(
+      'downloads',
+      where: 'novelId = ?',
+      whereArgs: [novelId],
+    );
+    return rows.isEmpty ? null : NovelDownload.fromMap(rows.first);
+  }
+
+  Future<List<NovelDownload>> listDownloads() async {
+    final rows = await _db.query('downloads');
+    return rows.map(NovelDownload.fromMap).toList();
+  }
+
+  /// The download to work on next: one already going, else the one
+  /// waiting longest.
+  Future<NovelDownload?> nextDownload() async {
+    final rows = await _db.query(
+      'downloads',
+      where: 'state IN (?, ?)',
+      whereArgs: [DownloadState.running.name, DownloadState.queued.name],
+      orderBy: "state = 'running' DESC, updatedAt",
+      limit: 1,
+    );
+    return rows.isEmpty ? null : NovelDownload.fromMap(rows.first);
+  }
+
+  Future<void> setDownload(NovelDownload download) => _db.insert(
+    'downloads',
+    download.toMap(),
+    conflictAlgorithm: ConflictAlgorithm.replace,
+  );
+
+  /// Updates a download's progress, unless it was cancelled or paused
+  /// meanwhile. Returns false then, so the work stops.
+  Future<bool> updateDownload(NovelDownload download) async {
+    final n = await _db.update(
+      'downloads',
+      download.toMap(),
+      where: 'novelId = ? AND state IN (?, ?)',
+      whereArgs: [
+        download.novelId,
+        DownloadState.running.name,
+        DownloadState.queued.name,
+      ],
+    );
+    return n > 0;
+  }
+
+  /// Sets every waiting download to [state], e.g. after the site's check
+  /// is passed.
+  Future<void> setDownloadsWhere(DownloadState from, DownloadState to) =>
+      _db.update(
+        'downloads',
+        {'state': to.name, 'updatedAt': DateTime.now().millisecondsSinceEpoch},
+        where: 'state = ?',
+        whereArgs: [from.name],
+      );
+
+  /// Forgets the download, and lets its chapters be trimmed again like
+  /// any read chapter.
+  Future<void> removeDownload(int novelId) async {
+    await _db.delete('downloads', where: 'novelId = ?', whereArgs: [novelId]);
+    await _db.update(
+      'chapters',
+      {'keep': 0},
+      where: 'novelId = ?',
+      whereArgs: [novelId],
+    );
+    await _trimChapters(novelId, 60);
+  }
+
+  /// Adds a novel along with all its chapters, as when importing a book.
+  /// Returns its id.
+  Future<int> insertNovelWithChapters(Novel novel, List<ChapterText> chapters) {
+    return _db.transaction((txn) async {
+      final id = await txn.insert('novels', novel.toMap());
+      final batch = txn.batch();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      for (var i = 0; i < chapters.length; i++) {
+        final c = chapters[i];
+        batch.insert('chapters', {
+          'url': c.url,
+          'novelId': id,
+          'title': c.title,
+          'novelTitle': c.novelTitle,
+          'body': c.paragraphs.join('\n\n'),
+          'prevUrl': c.prevUrl,
+          'nextUrl': c.nextUrl,
+          'fetchedAt': now,
+          'keep': 1,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        batch.insert('chapter_index', {
+          'novelId': id,
+          'number': i + 1,
+          'url': c.url,
+          'title': c.title,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      }
+      await batch.commit(noResult: true);
+      return id;
+    });
   }
 
   Future<int> chapterCountSaved(int novelId) async {

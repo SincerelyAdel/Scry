@@ -19,14 +19,16 @@ class Novel {
     this.readAt,
     this.seenCount = 0,
     this.notifiedCount = 0,
+    this.source = NovelSource.ranobes,
   });
 
   final int? id;
 
-  /// The novel's page on ranobes.net.
+  /// The novel's page on ranobes.net; `epub://…` for imported books.
   final String url;
 
   /// The site's number for the novel, used in its chapter-list links.
+  /// Negative for imported books.
   final int bookId;
 
   final String title;
@@ -62,6 +64,12 @@ class Novel {
   /// Chapters there were when new ones were last announced. Written only
   /// by the database's setNotified, so saving a novel doesn't undo it.
   final int notifiedCount;
+
+  /// Where the novel comes from.
+  final NovelSource source;
+
+  /// Imported from a file: everything is saved, nothing to check online.
+  bool get isImported => source == NovelSource.epub;
 
   /// Chapters out since it was last read that haven't been announced.
   int get unannounced {
@@ -120,6 +128,7 @@ class Novel {
       readAt: readAt ?? this.readAt,
       seenCount: seenCount ?? this.seenCount,
       notifiedCount: notifiedCount,
+      source: source,
     );
   }
 
@@ -145,6 +154,8 @@ class Novel {
       readAt: date(map['readAt']),
       seenCount: (map['seenCount'] as int?) ?? 0,
       notifiedCount: (map['notifiedCount'] as int?) ?? 0,
+      source:
+          NovelSource.values.asNameMap()[map['source']] ?? NovelSource.ranobes,
     );
   }
 
@@ -167,6 +178,10 @@ class Novel {
       'chapterProgress': chapterProgress,
       'readAt': readAt?.millisecondsSinceEpoch,
       'seenCount': seenCount,
+      'source': source.name,
     };
   }
 }
+
+/// Where a novel comes from: ranobes.net, or an EPUB file.
+enum NovelSource { ranobes, epub }

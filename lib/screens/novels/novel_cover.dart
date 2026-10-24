@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../theme.dart';
@@ -27,7 +29,19 @@ class NovelCover extends StatelessWidget {
       return SizedBox(
         width: width,
         height: height,
-        child: NetImage(url, width: width, height: height, radius: 8),
+        child: url.startsWith('http')
+            ? NetImage(url, width: width, height: height, radius: 8)
+            // An imported book's cover, saved on the device.
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(
+                  File(url),
+                  width: width,
+                  height: height,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const SizedBox.shrink(),
+                ),
+              ),
       );
     }
     return Container(
