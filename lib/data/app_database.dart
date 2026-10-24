@@ -5,7 +5,6 @@ import '../models/article.dart';
 import '../models/article_sort.dart';
 import '../models/feed.dart';
 import '../models/novel.dart';
-import '../models/novel_download.dart';
 import '../models/paper_figure.dart';
 import '../models/topic.dart';
 import '../utils/arxiv.dart';
@@ -202,15 +201,16 @@ class AppDatabase {
     if (from < 12) await _addDownloadTables(db);
   }
 
-  /// Added in version 12: whole novels downloaded for offline reading,
-  /// and novels imported from EPUB files.
+  /// Added in version 12: novels imported from EPUB files, and (for a
+  /// while) whole novels downloaded in the app.
   ///
   /// - novels.source is 'ranobes' or 'epub'.
-  /// - chapters.keep is 1 for downloaded chapters, which are never trimmed.
+  /// - chapters.keep is 1 for imported or downloaded chapters, which are
+  ///   never trimmed.
   /// - chapter_index is every chapter's number, link and title, so the
   ///   chapter list works offline.
-  /// - downloads is each download's progress, shared with the background
-  ///   worker doing it.
+  /// - downloads was each download's progress; unused now that QuickNovel
+  ///   does the downloading.
   static Future<void> _addDownloadTables(DatabaseExecutor db) async {
     await db.execute(
       "ALTER TABLE novels ADD COLUMN source TEXT NOT NULL DEFAULT 'ranobes'",
@@ -707,16 +707,15 @@ class AppDatabase {
   }
 
   /// Keeps a chapter for offline reading. Each novel keeps its
-  /// [keepPerNovel] most recently fetched chapters, besides the ones
-  /// downloaded on purpose ([keep]), which stay until the download is
-  /// removed.
+  /// [keepPerNovel] most recently fetched chapters, besides the ones kept
+  /// for good ([keep]: imported, or downloaded by earlier versions).
   Future<void> saveChapter(
     int novelId,
     ChapterText chapter, {
     int keepPerNovel = 60,
     bool keep = false,
   }) async {
-    // Reading a downloaded chapter again mustn't make it trimmable.
+    // Reading a kept chapter again mustn't make it trimmable.
     await _db.rawInsert(
       '''
       INSERT OR REPLACE INTO chapters
@@ -753,7 +752,7 @@ class AppDatabase {
     );
   }
 
-  // ------------------------------------------------- chapter index, downloads
+  // --------------------------------------------------------- chapter index
 
   /// Records chapters from the novel's chapter list.
   Future<void> saveIndex(int novelId, Iterable<ChapterRef> chapters) async {
@@ -800,114 +799,12 @@ class AppDatabase {
         : null,
   );
 
-  /// Recorded chapters not downloaded yet, oldest first. Chapters already
-  /// saved from reading count as downloaded from now on.
-  Future<List<ChapterRef>> chaptersToDownload(
-    int novelId, {
-    int limit = 50,
-  }) async {
-    await _db.rawUpdate(
-      '''
-      UPDATE chapters SET keep = 1 WHERE novelId = ? AND keep = 0
-        AND url IN (SELECT url FROM chapter_index WHERE novelId = ?)
-    ''',
-      [novelId, novelId],
-    );
-    final rows = await _db.rawQuery(
-      '''
-      SELECT i.* FROM chapter_index i
-        LEFT JOIN chapters c ON c.url = i.url
-      WHERE i.novelId = ? AND c.url IS NULL
-      ORDER BY i.number LIMIT ?
-    ''',
-      [novelId, limit],
-    );
-    return rows.map(_chapterRef).toList();
-  }
-
-  /// How many of the novel's recorded chapters are downloaded.
-  Future<int> downloadedCount(int novelId) async {
-    final rows = await _db.rawQuery(
-      '''
-      SELECT COUNT(*) AS n FROM chapter_index i
-        JOIN chapters c ON c.url = i.url AND c.keep = 1
-      WHERE i.novelId = ?
-    ''',
-      [novelId],
-    );
-    return rows.first['n'] as int;
-  }
-
-  Future<NovelDownload?> getDownload(int novelId) async {
-    final rows = await _db.query(
-      'downloads',
-      where: 'novelId = ?',
-      whereArgs: [novelId],
-    );
-    return rows.isEmpty ? null : NovelDownload.fromMap(rows.first);
-  }
-
-  Future<List<NovelDownload>> listDownloads() async {
-    final rows = await _db.query('downloads');
-    return rows.map(NovelDownload.fromMap).toList();
-  }
-
-  /// The download to work on next: one already going, else the one
-  /// waiting longest.
-  Future<NovelDownload?> nextDownload() async {
-    final rows = await _db.query(
-      'downloads',
-      where: 'state IN (?, ?)',
-      whereArgs: [DownloadState.running.name, DownloadState.queued.name],
-      orderBy: "state = 'running' DESC, updatedAt",
-      limit: 1,
-    );
-    return rows.isEmpty ? null : NovelDownload.fromMap(rows.first);
-  }
-
-  Future<void> setDownload(NovelDownload download) => _db.insert(
-    'downloads',
-    download.toMap(),
-    conflictAlgorithm: ConflictAlgorithm.replace,
-  );
-
-  /// Updates a download's progress, unless it was cancelled or paused
-  /// meanwhile. Returns false then, so the work stops.
-  Future<bool> updateDownload(NovelDownload download) async {
-    final n = await _db.update(
-      'downloads',
-      download.toMap(),
-      where: 'novelId = ? AND state IN (?, ?)',
-      whereArgs: [
-        download.novelId,
-        DownloadState.running.name,
-        DownloadState.queued.name,
-      ],
-    );
-    return n > 0;
-  }
-
-  /// Sets every waiting download to [state], e.g. after the site's check
-  /// is passed.
-  Future<void> setDownloadsWhere(DownloadState from, DownloadState to) =>
-      _db.update(
-        'downloads',
-        {'state': to.name, 'updatedAt': DateTime.now().millisecondsSinceEpoch},
-        where: 'state = ?',
-        whereArgs: [from.name],
-      );
-
-  /// Forgets the download, and lets its chapters be trimmed again like
-  /// any read chapter.
-  Future<void> removeDownload(int novelId) async {
-    await _db.delete('downloads', where: 'novelId = ?', whereArgs: [novelId]);
-    await _db.update(
-      'chapters',
-      {'keep': 0},
-      where: 'novelId = ?',
-      whereArgs: [novelId],
-    );
-    await _trimChapters(novelId, 60);
+  /// Clears what's left of downloads made in the app, which QuickNovel
+  /// does now. Their chapters stay saved. Returns the novels they were for.
+  Future<List<int>> clearDownloads() async {
+    final rows = await _db.query('downloads', columns: ['novelId']);
+    await _db.delete('downloads');
+    return [for (final r in rows) r['novelId'] as int];
   }
 
   /// Adds a novel along with all its chapters, as when importing a book.

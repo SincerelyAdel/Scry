@@ -67,10 +67,6 @@ class _ScryAppState extends State<ScryApp> {
     _images = ArticleImages(widget.repository);
     _novels = NovelsProvider(
       widget.novels,
-      // Android downloads in a background worker; elsewhere, in the app.
-      downloadInApp: BackgroundSync.supported
-          ? null
-          : widget.novels.downloader(),
       coverDir: () async => p.join(await getDatabasesPath(), 'covers'),
     )..load();
 

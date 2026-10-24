@@ -7,10 +7,8 @@ import '../data/app_database.dart';
 import '../data/feed_repository.dart';
 import '../data/novel_repository.dart';
 import '../state/settings_provider.dart';
-import '../models/novel_download.dart';
 import 'chapter_alerts.dart';
 import 'feed_fetcher.dart';
-import 'novel_downloader.dart';
 import 'ranobes_session.dart';
 
 const _uniqueName = 'scry-periodic-refresh';
@@ -29,10 +27,9 @@ void backgroundSyncDispatcher() {
     try {
       // Its own connection: closing a shared one would close the app's.
       db = await AppDatabase.open(singleInstance: false);
-      if (task == _downloadsTaskName) {
-        await RanobesSession.load();
-        return await _runDownloads(db);
-      }
+      // Downloads left queued by an earlier version; QuickNovel does
+      // them now.
+      if (task == _downloadsTaskName) return true;
       if (task == _chaptersTaskName) {
         await RanobesSession.load();
         final novels = NovelRepository(db, DioFeedFetcher());
@@ -53,61 +50,6 @@ void backgroundSyncDispatcher() {
   });
 }
 
-/// Downloads for up to 8 minutes (Android stops a worker at 10), then
-/// queues another run to carry on.
-Future<bool> _runDownloads(AppDatabase db) async {
-  var lastShown = DateTime(0);
-  DownloadState? lastState;
-  final downloader = NovelDownloader(
-    db,
-    DioFeedFetcher(),
-    onProgress: (novel, download) {
-      // The notification at most every second and a half, and on changes.
-      final now = DateTime.now();
-      if (download.state == lastState &&
-          now.difference(lastShown) < const Duration(milliseconds: 1500)) {
-        return;
-      }
-      lastShown = now;
-      lastState = download.state;
-      ChapterAlerts.downloadProgress(novel, download).ignore();
-    },
-  );
-  final result = await downloader.run();
-  switch (result) {
-    case DownloadRun.outOfTime:
-      await DownloadWorker.schedule();
-      return true;
-    case DownloadRun.offline:
-      // Android tries again later, with a growing wait.
-      return false;
-    case DownloadRun.finished:
-    case DownloadRun.needsCheck:
-      // Done, or waiting for the person to pass the check in the app,
-      // which queues another run.
-      return true;
-  }
-}
-
-/// Runs novel downloads in the background, so they carry on with the app
-/// closed. Elsewhere than Android, they run in the app while it's open.
-abstract final class DownloadWorker {
-  /// Starts a run, or another after the one going now.
-  static Future<void> schedule() async {
-    if (!BackgroundSync.supported) return;
-    await Workmanager().registerOneOffTask(
-      _downloadsUniqueName,
-      _downloadsTaskName,
-      constraints: Constraints(networkType: NetworkType.connected),
-      // After the current run, which then finds nothing to do or carries
-      // on where it left off.
-      existingWorkPolicy: ExistingWorkPolicy.append,
-      backoffPolicy: BackoffPolicy.exponential,
-      backoffPolicyDelay: const Duration(minutes: 1),
-    );
-  }
-}
-
 /// Periodic feed refresh via Workmanager.
 ///
 /// Only wired up for Android. iOS needs BGTaskScheduler entitlements and
@@ -119,6 +61,8 @@ class BackgroundSync {
   static Future<void> initialize() async {
     if (!supported) return;
     await Workmanager().initialize(backgroundSyncDispatcher);
+    // Downloading moved to QuickNovel; stop runs an earlier version queued.
+    await Workmanager().cancelByUniqueName(_downloadsUniqueName);
   }
 
   /// Schedules (or cancels, for [SyncInterval.off]) the periodic refresh.

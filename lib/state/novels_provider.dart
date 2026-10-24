@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 import 'dart:isolate';
 
@@ -6,30 +5,19 @@ import 'package:flutter/foundation.dart';
 
 import '../data/novel_repository.dart';
 import '../models/novel.dart';
-import '../models/novel_download.dart';
-import '../services/background_sync.dart';
 import '../services/chapter_alerts.dart';
 import '../services/epub.dart';
 import '../services/feed_fetcher.dart';
-import '../services/novel_downloader.dart';
 import '../services/ranobes.dart';
 
 /// The novel library: what's in it, and checking for new chapters.
 class NovelsProvider extends ChangeNotifier {
-  NovelsProvider(this._repo, {this.downloadInApp, this.coverDir});
+  NovelsProvider(this._repo, {this.coverDir});
 
   final NovelRepository _repo;
 
-  /// Runs downloads in the app instead of the background worker; set
-  /// where there's no worker (and in tests).
-  final NovelDownloader? downloadInApp;
-
   /// Where imported books' covers are saved.
   final Future<String> Function()? coverDir;
-
-  Map<int, NovelDownload> _downloads = const {};
-  Timer? _downloadPoll;
-  bool _downloadingInApp = false;
 
   List<Novel> _novels = const [];
   bool _loaded = false;
@@ -54,94 +42,19 @@ class NovelsProvider extends ChangeNotifier {
     _humanCheck = null;
     _lastCheck = null;
     notifyListeners();
-    // Downloads the check stopped carry on.
-    _repo.resumeAfterCheck().then((_) => _startDownloads()).ignore();
   }
 
   Future<void> load() async {
-    _novels = _ordered(await _repo.listNovels());
     final first = !_loaded;
+    _novels = _ordered(await _repo.listNovels());
     _loaded = true;
-    await _loadDownloads();
     notifyListeners();
-    // Picks up downloads left going when the app last closed.
-    if (first && _downloads.values.any((d) => d.active)) {
-      _startDownloads().ignore();
-    }
-  }
-
-  // ------------------------------------------------------------- downloads
-
-  /// The novel's download, if it's been downloaded or is being.
-  NovelDownload? downloadOf(int? novelId) => _downloads[novelId];
-
-  /// Downloads every chapter of [novel] for offline reading, or carries on
-  /// with it.
-  Future<void> download(Novel novel) async {
-    await _repo.queueDownload(novel);
-    await _loadDownloads();
-    notifyListeners();
-    await _startDownloads();
-  }
-
-  Future<void> pauseDownload(Novel novel) async {
-    await _repo.pauseDownload(novel.id!);
-    await ChapterAlerts.dismissDownload(novel.id!);
-    await _loadDownloads();
-    notifyListeners();
-  }
-
-  Future<void> removeDownload(Novel novel) async {
-    await _repo.removeDownload(novel.id!);
-    await ChapterAlerts.dismissDownload(novel.id!);
-    await _loadDownloads();
-    notifyListeners();
-  }
-
-  Future<void> _startDownloads() async {
-    final local = downloadInApp;
-    if (local == null) {
-      await DownloadWorker.schedule();
-    } else if (!_downloadingInApp) {
-      _downloadingInApp = true;
-      try {
-        while (await local.run() == DownloadRun.outOfTime) {}
-      } finally {
-        _downloadingInApp = false;
+    if (first) {
+      // Downloading moved to QuickNovel; tidy up after earlier versions.
+      for (final id in await _repo.clearDownloads()) {
+        await ChapterAlerts.dismissDownload(id);
       }
-      await _loadDownloads();
-      notifyListeners();
     }
-  }
-
-  /// Reads the downloads' progress, which the worker writes, and keeps
-  /// reading it every couple of seconds while one is going.
-  Future<void> _loadDownloads() async {
-    final list = await _repo.downloads();
-    final before = _downloads;
-    _downloads = {for (final d in list) d.novelId: d};
-    final going = list.any((d) => d.active);
-    if (going) {
-      _downloadPoll ??= Timer.periodic(const Duration(seconds: 2), (_) async {
-        await _loadDownloads();
-        notifyListeners();
-      });
-    } else {
-      _downloadPoll?.cancel();
-      _downloadPoll = null;
-    }
-    // The download corrects the chapter count; show it when one starts,
-    // stops or finishes.
-    if (before.isNotEmpty &&
-        list.any((d) => before[d.novelId]?.state != d.state)) {
-      _novels = _ordered(await _repo.listNovels());
-    }
-  }
-
-  @override
-  void dispose() {
-    _downloadPoll?.cancel();
-    super.dispose();
   }
 
   // ---------------------------------------------------------------- import

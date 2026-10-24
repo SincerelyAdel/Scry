@@ -107,16 +107,11 @@ the two sides; the choice is remembered.
   chapter you're on; the 123 button goes to any chapter number. Chapters
   seen once stay listed offline. Pinching out of a chapter always lands
   here.
-- **Download for offline** (novel page): saves every chapter, for
-  completed novels or ones with thousands of chapters. ranobes.net allows a
-  chapter every second or two, so it runs in the background (Android) with
-  a progress notification, and can be paused, resumed or removed. If the
-  site puts up its human check, the download waits; **Verify and carry on**
-  opens the check, and it resumes once it's passed. When new chapters come
-  out, **Get N more** fetches just those.
-- **Import EPUB** (library): adds a book from an EPUB file (EPUB 2 or 3),
-  with its cover, details and chapters in reading order. Imported books
-  live on the phone and never touch the site.
+- **Whole novels offline**: download the novel with
+  [QuickNovel](https://github.com/LagradOst/QuickNovel), then **Import
+  EPUB** (library) adds the book (EPUB 2 or 3) with its cover, details and
+  chapters in reading order. Imported books live on the phone and never
+  touch the site. The novel page links to QuickNovel.
 - **Reader**: the chapter's text only (the ads the site puts inside it are
   removed), with its own text size, line spacing and serif or sans font
   (the Aa button). It keeps the screen on, remembers how far down the

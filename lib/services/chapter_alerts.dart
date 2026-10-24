@@ -4,11 +4,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/novel.dart';
-import '../models/novel_download.dart';
 
-/// Notifications about new chapters and novel downloads. Tapping a new
-/// chapter one opens the novel where it was left; a download one opens the
-/// novel's page. Android only, like the background work that sends them.
+/// Notifications about new chapters. Tapping one opens the novel where it
+/// was left. Android only, like the background checks that send them.
+///
+/// Earlier versions also showed download progress; tapping one of those
+/// still opens the novel's page.
 abstract final class ChapterAlerts {
   static bool get supported => !kIsWeb && Platform.isAndroid;
 
@@ -105,59 +106,9 @@ abstract final class ChapterAlerts {
 
   // ------------------------------------------------------------ downloads
 
-  /// Download notifications don't share ids with new chapter ones.
+  /// Download notifications (earlier versions) had ids apart from new
+  /// chapter ones.
   static int _downloadId(int novelId) => (1 << 24) + novelId;
-
-  /// Shows how [novel]'s download is going, replacing the last one.
-  static Future<void> downloadProgress(
-    Novel novel,
-    NovelDownload download,
-  ) async {
-    if (!supported) return;
-    await initialize();
-    final active = download.active;
-    final total = download.total;
-    final String body;
-    switch (download.state) {
-      case DownloadState.queued:
-      case DownloadState.running:
-        body = total > 0 && download.message == null
-            ? 'Chapter ${download.done} of $total'
-            : download.message ?? 'Starting';
-      case DownloadState.needsCheck:
-        body =
-            "Paused: ranobes.net wants to check you're human. Tap to verify.";
-      case DownloadState.paused:
-        body = 'Paused';
-      case DownloadState.done:
-        body = download.message ?? 'All ${download.done} chapters saved';
-    }
-    await _plugin.show(
-      id: _downloadId(novel.id!),
-      title: download.state == DownloadState.done
-          ? 'Downloaded ${novel.title}'
-          : 'Downloading ${novel.title}',
-      body: body,
-      notificationDetails: NotificationDetails(
-        android: AndroidNotificationDetails(
-          'downloads',
-          'Downloads',
-          channelDescription: 'Novels being saved for offline reading',
-          icon: 'ic_stat_scry',
-          importance: Importance.low,
-          priority: Priority.low,
-          showProgress: active,
-          maxProgress: total > 0 ? total : 1,
-          progress: download.done.clamp(0, total > 0 ? total : 1),
-          indeterminate: active && total <= 0,
-          onlyAlertOnce: true,
-          ongoing: active,
-          autoCancel: !active,
-        ),
-      ),
-      payload: '$_pagePrefix${novel.id}',
-    );
-  }
 
   /// Clears [novelId]'s download notification.
   static Future<void> dismissDownload(int novelId) async {

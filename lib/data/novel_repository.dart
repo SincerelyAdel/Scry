@@ -4,10 +4,8 @@ import 'dart:isolate';
 import 'package:path/path.dart' as p;
 
 import '../models/novel.dart';
-import '../models/novel_download.dart';
 import '../services/epub.dart';
 import '../services/feed_fetcher.dart';
-import '../services/novel_downloader.dart';
 import '../services/ranobes.dart';
 import 'app_database.dart';
 
@@ -140,8 +138,8 @@ class NovelRepository {
     return parsed;
   }
 
-  /// The chapters recorded so far (from browsing the list, downloading or
-  /// importing), oldest first.
+  /// The chapters recorded so far (from browsing the list or importing),
+  /// oldest first.
   Future<List<ChapterRef>> chapterIndex(int novelId) =>
       _db.chapterIndex(novelId);
 
@@ -207,45 +205,8 @@ class NovelRepository {
     return updated;
   }
 
-  // ------------------------------------------------------------- downloads
-
-  /// Does the downloading, for running it in the app.
-  NovelDownloader downloader() => NovelDownloader(_db, _fetcher);
-
-  Future<NovelDownload?> download(int novelId) => _db.getDownload(novelId);
-
-  Future<List<NovelDownload>> downloads() => _db.listDownloads();
-
-  /// Queues the whole novel for download, or carries on with it.
-  Future<void> queueDownload(Novel novel) async {
-    final existing = await _db.getDownload(novel.id!);
-    await _db.setDownload(
-      (existing ??
-              NovelDownload(
-                novelId: novel.id!,
-                state: DownloadState.queued,
-                total: novel.chapterCount,
-                updatedAt: DateTime.now(),
-              ))
-          .copyWith(state: DownloadState.queued, clearMessage: true),
-    );
-  }
-
-  Future<void> pauseDownload(int novelId) async {
-    final existing = await _db.getDownload(novelId);
-    if (existing == null) return;
-    await _db.setDownload(
-      existing.copyWith(state: DownloadState.paused, clearMessage: true),
-    );
-  }
-
-  /// Stops the download and lets its chapters go, apart from the latest
-  /// read ones.
-  Future<void> removeDownload(int novelId) => _db.removeDownload(novelId);
-
-  /// Carries on with downloads the site's check stopped, once it's passed.
-  Future<void> resumeAfterCheck() =>
-      _db.setDownloadsWhere(DownloadState.needsCheck, DownloadState.queued);
+  /// Clears what's left of in-app downloads (see AppDatabase).
+  Future<List<int>> clearDownloads() => _db.clearDownloads();
 
   // ---------------------------------------------------------------- import
 
