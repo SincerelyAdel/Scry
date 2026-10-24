@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../models/novel.dart';
+import '../../services/book_picker.dart';
+import '../../services/chapter_matcher.dart';
 import '../../services/feed_fetcher.dart';
 import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
@@ -47,6 +49,14 @@ class _NovelScreenState extends State<NovelScreen> {
   /// so the list works offline.
   final Map<int, ChapterRef> _index = {};
 
+  /// Chapters from an EPUB were added to this ranobes.net novel.
+  bool _hasBook = false;
+  bool _attaching = false;
+
+  /// A chapter read from the phone (an EPUB's).
+  static bool _onPhone(ChapterRef? ref) =>
+      ref != null && ref.url.startsWith('epub://');
+
   @override
   void initState() {
     super.initState();
@@ -61,11 +71,19 @@ class _NovelScreenState extends State<NovelScreen> {
     final refs = await novels.repository.chapterIndex(novel.id!);
     if (!mounted) return;
     setState(() {
+      _index.clear();
+      _chapters.removeWhere((_, ref) => _onPhone(ref));
       for (final ref in refs) {
         _index[ref.number] = ref;
-        _chapters.putIfAbsent(ref.number, () => ref);
+        // The saved copy wins over the site's link.
+        if (_onPhone(ref)) {
+          _chapters[ref.number] = ref;
+        } else {
+          _chapters.putIfAbsent(ref.number, () => ref);
+        }
+        if (ref.number > _count) _count = ref.number;
       }
-      if (_index.length > _count) _count = _index.length;
+      _hasBook = !novel.isImported && refs.any(_onPhone);
     });
     // Shows the newest chapters' page first, which also corrects the
     // count. Imported books have nothing online.
@@ -110,6 +128,8 @@ class _NovelScreenState extends State<NovelScreen> {
             ..add(page);
         }
         for (final ref in result.chapters) {
+          // Chapters from the EPUB stay on the phone.
+          if (_onPhone(_index[ref.number])) continue;
           _chapters[ref.number] = ref;
           _index[ref.number] = ref;
         }
@@ -174,6 +194,64 @@ class _NovelScreenState extends State<NovelScreen> {
     }
   }
 
+  /// Adds the chapters of an EPUB of this novel (from QuickNovel), so
+  /// they're read from the phone; then says how they lined up.
+  Future<void> _attach(Novel novel) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final novels = context.read<NovelsProvider>();
+    try {
+      final bytes = await BookPicker.pick();
+      if (bytes == null || !mounted) return;
+      setState(() => _attaching = true);
+      final match = await novels.attachBook(novel, bytes);
+      if (!mounted) return;
+      await _loadIndex(novels.byId(novel.id));
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (_) => _MatchReport(match: match, siteCount: _count),
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text("Couldn't add the chapters: $e")),
+      );
+    } finally {
+      if (mounted) setState(() => _attaching = false);
+    }
+  }
+
+  Future<void> _detach(Novel novel) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove the EPUB chapters?'),
+        content: const Text(
+          'They load from ranobes.net again when you read them.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final novels = context.read<NovelsProvider>();
+    await novels.detachBook(novel);
+    if (!mounted) return;
+    setState(() {
+      _chapters.clear();
+      _requested.clear();
+      _failed.clear();
+    });
+    await _loadIndex(novels.byId(novel.id));
+  }
+
   Future<void> _remove(Novel novel) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -226,9 +304,28 @@ class _NovelScreenState extends State<NovelScreen> {
                 );
               } else if (v == 'remove') {
                 _remove(novel);
+              } else if (v == 'attach') {
+                _attach(novel);
+              } else if (v == 'detach') {
+                _detach(novel);
               }
             },
             itemBuilder: (_) => [
+              if (!novel.isImported && BookPicker.supported)
+                PopupMenuItem(
+                  value: 'attach',
+                  enabled: !_attaching,
+                  child: Text(
+                    _hasBook
+                        ? 'Replace chapters from EPUB'
+                        : 'Add chapters from EPUB',
+                  ),
+                ),
+              if (_hasBook)
+                const PopupMenuItem(
+                  value: 'detach',
+                  child: Text('Remove EPUB chapters'),
+                ),
               if (!novel.isImported)
                 const PopupMenuItem(
                   value: 'web',
@@ -253,6 +350,7 @@ class _NovelScreenState extends State<NovelScreen> {
               child: _Header(
                 novel: novel,
                 count: _count,
+                hasBook: _hasBook,
                 padding: pad,
                 onJump: novel.chapterNumber > 0
                     ? () => _jumpTo(novel.chapterNumber)
@@ -286,6 +384,7 @@ class _NovelScreenState extends State<NovelScreen> {
                     }),
                     current: novel.chapterNumber == number,
                     read: number < novel.chapterNumber,
+                    onPhone: _onPhone(ref) && !novel.isImported,
                     onTap: ref == null
                         ? null
                         : () => openReader(
@@ -322,12 +421,14 @@ class _Header extends StatefulWidget {
   const _Header({
     required this.novel,
     required this.count,
+    this.hasBook = false,
     required this.padding,
     this.onJump,
   });
 
   final Novel novel;
   final int count;
+  final bool hasBook;
   final double padding;
   final VoidCallback? onJump;
 
@@ -392,7 +493,7 @@ class _HeaderState extends State<_Header> {
           ],
         ),
         const SizedBox(height: 14),
-        _OfflineNote(novel: novel),
+        _OfflineNote(novel: novel, hasBook: widget.hasBook),
       ],
     );
 
@@ -458,6 +559,7 @@ class _ChapterRow extends StatelessWidget {
     required this.onRetry,
     required this.current,
     required this.read,
+    this.onPhone = false,
     this.onTap,
   });
 
@@ -467,6 +569,9 @@ class _ChapterRow extends StatelessWidget {
   final VoidCallback onRetry;
   final bool current;
   final bool read;
+
+  /// Read from the phone (from the EPUB) rather than the site.
+  final bool onPhone;
   final VoidCallback? onTap;
 
   @override
@@ -519,6 +624,16 @@ class _ChapterRow extends StatelessWidget {
                 )
               else if (failed)
                 Icon(Icons.refresh, size: 18, color: c.muted)
+              else if (onPhone)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Icon(
+                    Icons.offline_pin_outlined,
+                    size: 16,
+                    color: c.faint,
+                    semanticLabel: 'On this phone',
+                  ),
+                )
               else if (chapter?.date != null)
                 Padding(
                   padding: const EdgeInsets.only(left: 8),
@@ -536,12 +651,13 @@ class _ChapterRow extends StatelessWidget {
 }
 
 /// Where the novel's chapters live. Whole novels are downloaded with
-/// QuickNovel, whose EPUB the library imports; imported books say they're
-/// on the phone.
+/// QuickNovel and their EPUB added here; imported books say they're on the
+/// phone.
 class _OfflineNote extends StatelessWidget {
-  const _OfflineNote({required this.novel});
+  const _OfflineNote({required this.novel, required this.hasBook});
 
   final Novel novel;
+  final bool hasBook;
 
   static final _quickNovel = Uri.parse(
     'https://github.com/LagradOst/QuickNovel/releases',
@@ -550,14 +666,18 @@ class _OfflineNote extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
+    final offline = novel.isImported || hasBook;
     final text = novel.isImported
         ? 'Imported book: every chapter is on this phone'
-        : 'To read it all offline, download it in QuickNovel, then use '
-              'Import EPUB in the library';
+        : hasBook
+        ? 'Chapters marked with a pin are read from the EPUB on this phone; '
+              'ranobes.net is only asked about the rest and new ones'
+        : 'To read it all offline, download it in QuickNovel, then '
+              '⋮ → Add chapters from EPUB';
     return Row(
       children: [
         Icon(
-          novel.isImported ? Icons.offline_pin_outlined : Icons.info_outline,
+          offline ? Icons.offline_pin_outlined : Icons.info_outline,
           size: 18,
           color: c.muted,
         ),
@@ -565,12 +685,78 @@ class _OfflineNote extends StatelessWidget {
         Expanded(
           child: Text(text, style: TextStyle(color: c.muted, fontSize: 13.5)),
         ),
-        if (!novel.isImported)
+        if (!offline)
           TextButton(
             onPressed: () =>
                 launchUrl(_quickNovel, mode: LaunchMode.externalApplication),
             child: const Text('Get QuickNovel'),
           ),
+      ],
+    );
+  }
+}
+
+/// How an EPUB's chapters lined up with the novel's, after adding them.
+class _MatchReport extends StatelessWidget {
+  const _MatchReport({required this.match, required this.siteCount});
+
+  final ChapterMatch match;
+  final int siteCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    String list(Iterable<Object> items) {
+      final all = items.toList();
+      final shown = all.take(8).join(', ');
+      return all.length > 8 ? '$shown and ${all.length - 8} more' : shown;
+    }
+
+    final lines = <String>[
+      'Chapters ${match.first} to ${match.last} (${match.chapters.length}) '
+          'are now read from this phone.',
+      if (match.byOrder)
+        "The titles have no chapter numbers, so they were matched in order: "
+            "the book's first chapter is chapter 1. If ranobes.net counts "
+            'differently, remove them from the ⋮ menu.',
+      if (match.merged > 0)
+        '${match.merged} chapter parts were joined to the chapter before.',
+      if (match.gaps.isNotEmpty)
+        'Not in the book, so from ranobes.net: ${list(match.gaps)}.',
+      if (match.unnumbered.isNotEmpty)
+        'Left out, no chapter number: ${list(match.unnumbered)}.',
+      if (match.conflicts.isNotEmpty)
+        'Left out, the number came up twice (numbering that starts over '
+            'each volume?): ${list(match.conflicts)}.',
+      if (siteCount > match.last)
+        'Chapters ${match.last + 1} to $siteCount come from ranobes.net.'
+      else if (match.last > siteCount)
+        'The book goes past the $siteCount chapters ranobes.net had at the '
+            'last check; check its numbers match.',
+    ];
+    return AlertDialog(
+      title: const Text('Chapters added'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final line in lines)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: Text(
+                  line,
+                  style: TextStyle(color: c.text, fontSize: 14.5, height: 1.4),
+                ),
+              ),
+          ],
+        ),
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('OK'),
+        ),
       ],
     );
   }

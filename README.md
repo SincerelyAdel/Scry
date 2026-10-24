@@ -108,16 +108,16 @@ the two sides; the choice is remembered.
   seen once stay listed offline. Pinching out of a chapter always lands
   here.
 - **Whole novels offline**: download the novel with
-  [QuickNovel](https://github.com/LagradOst/QuickNovel), then **Import
-  EPUB** (library) adds the book (EPUB 2 or 3) with its cover, details and
-  chapters in reading order. Imported books live on the phone and never
-  touch the site. The novel page links to QuickNovel.
-- **Reader**: the chapter's text only (the ads the site puts inside it are
-  removed), with its own text size, line spacing and serif or sans font
-  (the Aa button). It keeps the screen on, remembers how far down the
-  chapter you are, saves the next chapter ahead of time, and keeps the last
-  60 chapters of each novel for offline reading. **Next chapter** at the end;
-  at the latest chapter, **Check again** looks for a new one.
+  [QuickNovel](https://github.com/LagradOst/QuickNovel), then on the
+  novel's page choose ⋮ → **Add chapters from EPUB**. The book's chapters
+  are matched to ranobes.net's by the number in each title (parts of one
+  chapter are joined; gaps, unnumbered extras and numbering that restarts
+  each volume are listed after adding). Those chapters are read from the
+  phone, even from a ranobes.net link, so the site is only asked for the
+  list's newest page (new chapters) and for chapters the book doesn't
+  have. Reading past the book's last chapter carries on from the site.
+  **Import EPUB** in the library adds a book on its own instead, with no
+  site at all.
 
 Parsing lives in `lib/services/ranobes.dart` (search results, the novel
 page, the chapter list's embedded JSON, chapter text); the site's markup is

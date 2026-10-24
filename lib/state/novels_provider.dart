@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../data/novel_repository.dart';
 import '../models/novel.dart';
 import '../services/chapter_alerts.dart';
+import '../services/chapter_matcher.dart';
 import '../services/epub.dart';
 import '../services/feed_fetcher.dart';
 import '../services/ranobes.dart';
@@ -58,6 +59,20 @@ class NovelsProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------- import
+
+  /// Adds the chapters of the EPUB in [bytes] to [novel] (see
+  /// NovelRepository.attachBook).
+  Future<ChapterMatch> attachBook(Novel novel, Uint8List bytes) async {
+    final book = await Isolate.run(() => Epub.parse(bytes));
+    final match = await _repo.attachBook(novel, book);
+    await load();
+    return match;
+  }
+
+  Future<void> detachBook(Novel novel) async {
+    await _repo.detachBook(novel);
+    await load();
+  }
 
   /// Adds the EPUB book in [bytes] to the library.
   Future<Novel> importBook(Uint8List bytes) async {

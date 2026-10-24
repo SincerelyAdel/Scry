@@ -22,7 +22,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 12;
+  static const _version = 13;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -94,6 +94,7 @@ class AppDatabase {
     );
     await _createNovelTables(db);
     await _addDownloadTables(db);
+    await _addSiteUrls(db);
   }
 
   /// Added in version 7: the chapter count when the novel was last read,
@@ -199,6 +200,15 @@ class AppDatabase {
     // tag existing articles again.
     if (from >= 4 && from < 11) await _backfillTags(db);
     if (from < 12) await _addDownloadTables(db);
+    if (from < 13) await _addSiteUrls(db);
+  }
+
+  /// Added in version 13: chapters from an EPUB added to a ranobes.net
+  /// novel are read from the phone. Their index rows point at the saved
+  /// copy (url) and keep the site's link (siteUrl), so a site link to one
+  /// of them still opens the saved copy.
+  static Future<void> _addSiteUrls(DatabaseExecutor db) async {
+    await db.execute('ALTER TABLE chapter_index ADD COLUMN siteUrl TEXT');
   }
 
   /// Added in version 12: novels imported from EPUB files, and (for a
@@ -754,19 +764,127 @@ class AppDatabase {
 
   // --------------------------------------------------------- chapter index
 
-  /// Records chapters from the novel's chapter list.
+  /// Records chapters from the novel's chapter list. Chapters added from
+  /// an EPUB keep pointing at their saved copy; only their site link is
+  /// noted.
   Future<void> saveIndex(int novelId, Iterable<ChapterRef> chapters) async {
+    final local = await _localNumbers(novelId);
     final batch = _db.batch();
     for (final c in chapters) {
+      if (local.contains(c.number)) {
+        batch.update(
+          'chapter_index',
+          {'siteUrl': c.url},
+          where: 'novelId = ? AND number = ?',
+          whereArgs: [novelId, c.number],
+        );
+        continue;
+      }
       batch.insert('chapter_index', {
         'novelId': novelId,
         'number': c.number,
         'url': c.url,
         'title': c.title,
         'date': c.date?.millisecondsSinceEpoch,
+        'siteUrl': null,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
     }
     await batch.commit(noResult: true);
+  }
+
+  /// Numbers of the novel's chapters added from an EPUB.
+  Future<Set<int>> _localNumbers(int novelId) async {
+    final rows = await _db.query(
+      'chapter_index',
+      columns: ['number'],
+      where: "novelId = ? AND url LIKE 'epub://%'",
+      whereArgs: [novelId],
+    );
+    return {for (final r in rows) r['number'] as int};
+  }
+
+  /// True when chapters from an EPUB were added to the novel.
+  Future<bool> hasLocalChapters(int novelId) async {
+    final rows = await _db.query(
+      'chapter_index',
+      columns: ['number'],
+      where: "novelId = ? AND url LIKE 'epub://%'",
+      whereArgs: [novelId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// The chapter whose link (saved or on the site) is [url].
+  Future<ChapterRef?> indexedChapterAt(int novelId, String url) async {
+    final rows = await _db.query(
+      'chapter_index',
+      where: 'novelId = ? AND (url = ? OR siteUrl = ?)',
+      whereArgs: [novelId, url, url],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : _chapterRef(rows.first);
+  }
+
+  /// Puts [chapters] (by number) in place of the novel's chapters with
+  /// those numbers, to read from the phone; [url] names each one's saved
+  /// copy. Chapters added before from another EPUB are replaced.
+  Future<void> attachChapters(
+    int novelId,
+    Map<int, ChapterText> chapters,
+  ) async {
+    await _db.transaction((txn) async {
+      // The last EPUB's chapters go; their numbers point at the site again.
+      await txn.rawDelete(
+        "DELETE FROM chapters WHERE novelId = ? AND url LIKE 'epub://%'",
+        [novelId],
+      );
+      await txn.rawUpdate(
+        """
+        UPDATE chapter_index SET url = siteUrl, siteUrl = NULL
+        WHERE novelId = ? AND url LIKE 'epub://%' AND siteUrl IS NOT NULL
+      """,
+        [novelId],
+      );
+      await txn.rawDelete(
+        "DELETE FROM chapter_index WHERE novelId = ? AND url LIKE 'epub://%'",
+        [novelId],
+      );
+      final existing = {
+        for (final r in await txn.query(
+          'chapter_index',
+          where: 'novelId = ?',
+          whereArgs: [novelId],
+        ))
+          r['number'] as int: r,
+      };
+      final batch = txn.batch();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      chapters.forEach((number, c) {
+        batch.insert('chapters', {
+          'url': c.url,
+          'novelId': novelId,
+          'title': c.title,
+          'novelTitle': c.novelTitle,
+          'body': c.paragraphs.join('\n\n'),
+          'prevUrl': c.prevUrl,
+          'nextUrl': c.nextUrl,
+          'fetchedAt': now,
+          'keep': 1,
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+        final site = existing[number];
+        batch.insert('chapter_index', {
+          'novelId': novelId,
+          'number': number,
+          'url': c.url,
+          // The site's title when known, so the list matches ranobes.net.
+          'title': (site?['title'] as String?) ?? c.title,
+          'date': site?['date'],
+          'siteUrl': site?['url'],
+        }, conflictAlgorithm: ConflictAlgorithm.replace);
+      });
+      await batch.commit(noResult: true);
+    });
   }
 
   /// Every chapter recorded for the novel, oldest first.

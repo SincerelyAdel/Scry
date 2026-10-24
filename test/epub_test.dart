@@ -5,9 +5,12 @@ import 'package:archive/archive.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scry/data/app_database.dart';
 import 'package:scry/data/novel_repository.dart';
+import 'package:scry/models/novel.dart';
+import 'package:scry/services/chapter_matcher.dart';
 import 'package:scry/services/epub.dart';
 
 import 'support/fakes.dart';
+import 'support/ranobes_fixtures.dart';
 
 void main() {
   late AppDatabase db;
@@ -157,6 +160,127 @@ void main() {
 
       await repo.removeNovel(imported);
       expect(File(imported.cover!).existsSync(), isFalse);
+    });
+
+    group('added to a ranobes.net novel', () {
+      late Novel novel;
+
+      setUp(() async {
+        fetcher.responses
+          ..[novelUrl] = novelPage
+          ..[chapterListUrl] = chapterListPage(count: 3)
+          ..[chapter3Url] = chapterPage(
+            title: 'Chapter 3',
+            paragraphs: ['From the site, long enough to read.'],
+            prev: chapter2Url,
+          );
+        novel = await repo.addNovel(novelUrl);
+        // The list has been seen once, as when the novel page opens.
+        await repo.chapterPage(novel.bookId, 1, novelId: novel.id);
+      });
+
+      test(
+        'its chapters are read from the phone, the rest from the site',
+        () async {
+          final match = await repo.attachBook(novel, Epub.parse(book()));
+          expect(match.chapters.keys, [1, 2]);
+          expect(await repo.hasBook(novel), isTrue);
+          fetcher.requested.clear();
+
+          // By the site's link too, e.g. where the reader left off.
+          final second = await repo.chapter(novel, chapter2Url);
+          expect(second.paragraphs, ['The town was quiet.']);
+          final first = await repo.firstChapter(novel);
+          expect(first.paragraphs.first, 'They set off at dawn.');
+          expect(first.nextUrl, second.url);
+          expect(fetcher.requested, isEmpty);
+
+          // Past the book's end: the site's next chapter...
+          expect(second.nextUrl, chapter3Url);
+          final third = await repo.chapter(novel, second.nextUrl!);
+          expect(third.paragraphs.join(' '), contains('From the site'));
+          expect(fetcher.requested, [chapter3Url]);
+          // ...and back again to the saved copy.
+          expect(third.prevUrl, second.url);
+
+          // The list keeps the site's titles and the saved copies.
+          final index = await repo.chapterIndex(novel.id!);
+          expect(index[1].title, 'Chapter 2: Liberation');
+          expect(index[1].url, startsWith('epub://'));
+          expect(index[2].url, chapter3Url);
+
+          // Seeing the list again doesn't point them back at the site.
+          await repo.chapterPage(novel.bookId, 1, novelId: novel.id);
+          expect(
+            (await repo.chapterIndex(novel.id!))[0].url,
+            startsWith('epub://'),
+          );
+
+          // New chapters are still looked for, on the list's first page.
+          fetcher.requested.clear();
+          fetcher.responses[chapterListUrl] = chapterListPage(count: 4);
+          final checked = await repo.checkForChapters(novel);
+          expect(checked.chapterCount, 4);
+          expect(fetcher.requested, [chapterListUrl]);
+        },
+      );
+
+      test('removing them sends their chapters back to the site', () async {
+        await repo.attachBook(novel, Epub.parse(book()));
+        await repo.detachBook(novel);
+        expect(await repo.hasBook(novel), isFalse);
+        final index = await repo.chapterIndex(novel.id!);
+        expect(
+          [for (final c in index) c.url],
+          [chapter1Url, chapter2Url, chapter3Url],
+        );
+      });
+    });
+  });
+
+  group('matching chapter numbers', () {
+    EpubChapter ch(String title, [String text = 'x']) =>
+        EpubChapter(title: title, paragraphs: [text]);
+
+    test('numbers come from the titles', () {
+      expect(ChapterMatcher.numberIn('Chapter 1205: The End'), 1205);
+      expect(ChapterMatcher.numberIn('Shadow Slave - Ch. 12'), 12);
+      expect(ChapterMatcher.numberIn('Episode 3'), 3);
+      expect(ChapterMatcher.numberIn('1205 - The End'), 1205);
+      expect(ChapterMatcher.numberIn('12. Leaving'), 12);
+      expect(ChapterMatcher.numberIn('Volume 2 Chapter 15'), 15);
+      expect(ChapterMatcher.numberIn('Prologue'), isNull);
+      expect(ChapterMatcher.numberIn('1984 Revisited'), 1984);
+    });
+
+    test('parts are joined, gaps and extras reported', () {
+      final match = ChapterMatcher.match([
+        ch('Prologue'),
+        ch('Chapter 1'),
+        ch('Chapter 2 (1)', 'a'),
+        ch('Chapter 2 (2)', 'b'),
+        ch('Chapter 4'),
+        ch('Afterword'),
+        ch('Chapter 1: again'),
+      ]);
+      expect(match.byOrder, isFalse);
+      expect(match.chapters.keys, [1, 2, 4]);
+      expect(match.chapters[2]!.paragraphs, ['a', 'b']);
+      expect(match.merged, 1);
+      expect(match.gaps, [3]);
+      expect(match.unnumbered, ['Prologue', 'Afterword']);
+      expect(match.conflicts, ['Chapter 1: again']);
+    });
+
+    test('titles without numbers go by order', () {
+      final match = ChapterMatcher.match([
+        ch('The Beginning'),
+        ch('A Turn'),
+        ch('Chapter 3'),
+      ]);
+      expect(match.byOrder, isTrue);
+      expect(match.chapters.keys, [1, 2, 3]);
+      expect(match.chapters[1]!.title, 'The Beginning');
     });
   });
 }

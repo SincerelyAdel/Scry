@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:path/path.dart' as p;
 
 import '../models/novel.dart';
+import '../services/chapter_matcher.dart';
 import '../services/epub.dart';
 import '../services/feed_fetcher.dart';
 import '../services/ranobes.dart';
@@ -146,19 +147,80 @@ class NovelRepository {
   /// The chapter at [url]: the saved copy when there is one, else fetched
   /// and saved. A saved last chapter is fetched again in case a newer one
   /// came out since; offline, the saved copy is used.
+  ///
+  /// Chapters added from an EPUB are always read from the phone, even when
+  /// asked for by their site link.
   Future<ChapterText> chapter(Novel novel, String url) async {
+    final id = novel.id!;
+    if (novel.isImported) return _saved(url);
+    final mixed = await _db.hasLocalChapters(id);
+    if (mixed) {
+      final ref = await _db.indexedChapterAt(id, url);
+      if (ref != null && ref.url.startsWith('epub://')) {
+        final saved = await _db.getChapter(ref.url);
+        if (saved != null) return _linked(novel, saved, ref.number);
+      }
+    }
+    if (!url.startsWith('http')) return _saved(url);
+
     final saved = await _db.getChapter(url);
-    if (novel.isImported || !url.startsWith('http')) {
-      if (saved != null) return saved;
-      throw FetchException('This chapter is missing from the book');
+    ChapterText result;
+    if (saved != null && saved.nextUrl != null) {
+      result = saved;
+    } else {
+      try {
+        result = await _download(novel, url);
+      } on Exception {
+        if (saved == null) rethrow;
+        result = saved;
+      }
     }
-    if (saved != null && saved.nextUrl != null) return saved;
-    try {
-      return await _download(novel, url);
-    } on Exception {
-      if (saved != null) return saved;
-      rethrow;
+    if (!mixed) return result;
+    final ref =
+        await _db.indexedChapterAt(id, result.url) ??
+        await _db.indexedChapterAt(id, url);
+    return ref == null ? result : _linked(novel, result, ref.number);
+  }
+
+  Future<ChapterText> _saved(String url) async {
+    final saved = await _db.getChapter(url);
+    if (saved != null) return saved;
+    throw FetchException('This chapter is missing from the book');
+  }
+
+  /// [chapter] (number [number]) with its neighbours from the index, so
+  /// moving on from a chapter from the EPUB reaches the site's next one,
+  /// and back from a site chapter reaches the saved copy before it.
+  Future<ChapterText> _linked(
+    Novel novel,
+    ChapterText chapter,
+    int number,
+  ) async {
+    final id = novel.id!;
+    var next = await _db.indexedChapter(id, number + 1);
+    if (next == null && chapter.url.startsWith('epub://')) {
+      // Past the book's last chapter: look the next one up in the site's
+      // list (its newest page when it's past the known count).
+      try {
+        final count = novel.chapterCount;
+        final page = number + 1 > count ? 1 : (count - (number + 1)) ~/ 25 + 1;
+        await chapterPage(novel.bookId, page, novelId: id);
+        next = await _db.indexedChapter(id, number + 1);
+      } on Exception {
+        // Offline; Check again in the reader tries once more.
+      }
     }
+    final previous = number > 1
+        ? await _db.indexedChapter(id, number - 1)
+        : null;
+    return ChapterText(
+      url: chapter.url,
+      title: chapter.title,
+      novelTitle: chapter.novelTitle,
+      paragraphs: chapter.paragraphs,
+      prevUrl: previous?.url ?? chapter.prevUrl,
+      nextUrl: next?.url ?? chapter.nextUrl,
+    );
   }
 
   /// The novel's first chapter: the saved one when it's known, else from
@@ -209,6 +271,38 @@ class NovelRepository {
   Future<List<int>> clearDownloads() => _db.clearDownloads();
 
   // ---------------------------------------------------------------- import
+
+  /// Adds the chapters of [book] (an EPUB of this novel, e.g. from
+  /// QuickNovel) to [novel], matched by chapter number. Those are read
+  /// from the phone from then on; the site is only asked about the rest
+  /// and new ones. Replaces chapters added from an earlier EPUB.
+  Future<ChapterMatch> attachBook(Novel novel, EpubBook book) async {
+    final match = ChapterMatcher.match(book.chapters);
+    if (match.chapters.isEmpty) {
+      throw EpubException("Couldn't find the chapters' numbers in the book");
+    }
+    final id = novel.id!;
+    await _db.attachChapters(id, {
+      for (final e in match.chapters.entries)
+        e.key: ChapterText(
+          url: 'epub://novel$id/${e.key}',
+          title: e.value.title,
+          novelTitle: novel.title,
+          paragraphs: e.value.paragraphs,
+        ),
+    });
+    if (match.last > novel.chapterCount) {
+      await _db.setChapterCount(id, match.last, DateTime.now());
+    }
+    return match;
+  }
+
+  /// Takes back the chapters added from an EPUB; they come from the site
+  /// again.
+  Future<void> detachBook(Novel novel) => _db.attachChapters(novel.id!, {});
+
+  /// True when chapters from an EPUB were added to [novel].
+  Future<bool> hasBook(Novel novel) => _db.hasLocalChapters(novel.id!);
 
   /// Adds [book] to the library with all its chapters. The cover is saved
   /// as a file in [coverDir].

@@ -277,7 +277,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                       // The novel's page is always under the reader.
                       onPressed: () => Navigator.of(context).maybePop(),
                     ),
-                    if (chapter != null && !_novel.isImported)
+                    if (chapter != null && chapter.url.startsWith('http'))
                       IconButton(
                         tooltip: 'Open on ranobes.net',
                         icon: const Icon(Icons.open_in_browser),
