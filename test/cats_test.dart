@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:scry/theme.dart';
 import 'package:scry/widgets/cats/cat_layer.dart';
+import 'package:scry/widgets/cats/cat_menu.dart';
 import 'package:scry/widgets/cats/cat_sim.dart';
 
 void main() {
+  menuTests();
   const page = Size(400, 800);
 
   /// Runs the pack for [seconds] at 60 frames a second.
@@ -105,5 +108,63 @@ void main() {
     await tester.tap(find.text('Under the cats'));
     expect(tapped, 1);
     await tester.pumpWidget(const SizedBox());
+  });
+}
+
+class _MenuHarness extends StatefulWidget {
+  const _MenuHarness();
+
+  @override
+  State<_MenuHarness> createState() => _MenuHarnessState();
+}
+
+class _MenuHarnessState extends State<_MenuHarness> {
+  bool on = false, resting = false, shooed = false;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      actions: [
+        CatMenuButton(
+          on: on,
+          resting: resting,
+          shooed: shooed,
+          onChanged: (v) => setState(() => on = v),
+          onRest: (v) => setState(() => resting = v),
+          onShoo: (v) => setState(() => shooed = v),
+        ),
+      ],
+    ),
+  );
+}
+
+void menuTests() {
+  testWidgets('the cat button opens every cat option', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(darkPalette),
+        home: const _MenuHarness(),
+      ),
+    );
+    await tester.tap(find.byTooltip('Cats'));
+    await tester.pumpAndSettle();
+    expect(find.text('Wandering behind the text'), findsOneWidget);
+    expect(find.text('Rest'), findsNothing);
+
+    // Switched on, the rest of the options open up.
+    await tester.tap(find.text('Wandering behind the text'));
+    await tester.pumpAndSettle();
+    expect(find.text('Rest'), findsOneWidget);
+    expect(find.text('Shoo away'), findsOneWidget);
+    await tester.tap(find.text('Shoo away'));
+    await tester.pumpAndSettle();
+    final state = tester.state<_MenuHarnessState>(find.byType(_MenuHarness));
+    expect(state.on, isTrue);
+    expect(state.shooed, isTrue);
+
+    // A tap elsewhere closes it.
+    await tester.tapAt(const Offset(200, 500));
+    await tester.pumpAndSettle();
+    expect(find.text('Rest'), findsNothing);
   });
 }

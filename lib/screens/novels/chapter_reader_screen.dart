@@ -11,6 +11,7 @@ import '../../state/novels_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../theme.dart';
 import '../../widgets/cats/cat_layer.dart';
+import '../../widgets/cats/cat_menu.dart';
 import '../../widgets/page_gestures.dart';
 import '../../widgets/ui.dart';
 import 'human_check_screen.dart';
@@ -276,6 +277,14 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                       style: const TextStyle(fontSize: 16),
                     ),
                     actions: [
+                      CatMenuButton(
+                        on: settings.novelCats,
+                        resting: _catsResting,
+                        shooed: _catsShooed,
+                        onChanged: settings.setNovelCats,
+                        onRest: (v) => setState(() => _catsResting = v),
+                        onShoo: (v) => setState(() => _catsShooed = v),
+                      ),
                       IconButton(
                         tooltip: 'Text',
                         icon: const Icon(Icons.text_fields),
@@ -333,77 +342,10 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                   ),
                 ),
               ),
-              if (settings.novelCats)
-                Positioned(
-                  right: 14,
-                  bottom: 14 + MediaQuery.paddingOf(context).bottom,
-                  child: _CatButtons(
-                    resting: _catsResting,
-                    shooed: _catsShooed,
-                    onRest: () => setState(() => _catsResting = !_catsResting),
-                    onShoo: () => setState(() => _catsShooed = !_catsShooed),
-                  ),
-                ),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Two small round buttons for the cats: lie down (or get up), and shoo
-/// them to the edges (or call them back).
-class _CatButtons extends StatelessWidget {
-  const _CatButtons({
-    required this.resting,
-    required this.shooed,
-    required this.onRest,
-    required this.onShoo,
-  });
-
-  final bool resting;
-  final bool shooed;
-  final VoidCallback onRest;
-  final VoidCallback onShoo;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.palette;
-    Widget button(IconData icon, String tip, bool on, VoidCallback onTap) =>
-        Tooltip(
-          message: tip,
-          child: Material(
-            color: on ? c.button : c.surface.withValues(alpha: 0.92),
-            shape: CircleBorder(side: BorderSide(color: c.border)),
-            child: InkWell(
-              customBorder: const CircleBorder(),
-              onTap: onTap,
-              child: SizedBox(
-                width: 40,
-                height: 40,
-                child: Icon(icon, size: 20, color: on ? c.onButton : c.muted),
-              ),
-            ),
-          ),
-        );
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        button(
-          Icons.pets,
-          resting ? 'Let the cats roam' : 'Let the cats rest',
-          resting,
-          onRest,
-        ),
-        const SizedBox(width: 10),
-        button(
-          shooed ? Icons.visibility : Icons.visibility_off_outlined,
-          shooed ? 'Call the cats back' : 'Shoo the cats away',
-          shooed,
-          onShoo,
-        ),
-      ],
     );
   }
 }
@@ -536,18 +478,6 @@ class _TextSettingsSheet extends StatelessWidget {
               ],
               selected: {settings.novelFont},
               onSelectionChanged: (v) => settings.setNovelFont(v.first),
-            ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              secondary: Icon(Icons.pets, color: c.muted),
-              title: Text('Cats', style: TextStyle(color: c.text)),
-              subtitle: Text(
-                'Wander about behind the text. Tap one to scare it off.',
-                style: TextStyle(color: c.muted, fontSize: 13),
-              ),
-              value: settings.novelCats,
-              onChanged: settings.setNovelCats,
             ),
           ],
         ),
