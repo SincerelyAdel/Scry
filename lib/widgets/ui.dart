@@ -51,7 +51,13 @@ class AppCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: c.goldViolet(alpha: glow ? 1 : 0.55),
+        gradient: c.goldViolet(
+          alpha: glow
+              ? 1
+              : c.isDark
+              ? 0.55
+              : 0.8,
+        ),
         boxShadow: [
           if (glow) ...[
             BoxShadow(
@@ -60,7 +66,7 @@ class AppCard extends StatelessWidget {
               offset: const Offset(-4, -2),
             ),
             BoxShadow(
-              color: c.violet.withValues(alpha: 0.3),
+              color: c.violet.withValues(alpha: c.isDark ? 0.3 : 0.4),
               blurRadius: 18,
               offset: const Offset(4, 2),
             ),

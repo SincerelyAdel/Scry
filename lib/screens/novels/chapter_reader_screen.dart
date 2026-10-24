@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -263,7 +264,9 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
           enabled: settings.novelCats,
           resting: _catsResting,
           shooed: _catsShooed,
-          opacity: c.isDark ? 0.82 : 0.9,
+          // Over the page now, so at full strength; they keep to the
+          // margins beside the text (the column is at most 760 wide).
+          textWidth: math.min(MediaQuery.sizeOf(context).width, 760) - 24,
           child: Stack(
             children: [
               CustomScrollView(

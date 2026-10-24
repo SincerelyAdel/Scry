@@ -33,6 +33,32 @@ void main() {
     }
   });
 
+  test('beside a text column, they keep to the margins', () {
+    const tablet = Size(1280, 800);
+    final pack = CatPack()..textWidth = 700;
+    // Text from 290 to 990; margins either side.
+    for (var i = 0; i < 60 * 60; i++) {
+      pack.tick(1 / 60, tablet);
+      if (i % 30 != 0) continue;
+      for (final c in pack.cats) {
+        if (c.fleeing) continue;
+        expect(
+          c.p.dx < 290 || c.p.dx > 990,
+          isTrue,
+          reason: '${c.b.id} at ${c.p} after ${i ~/ 60}s',
+        );
+      }
+    }
+    // A scared cat leaves through its own side, not across the text.
+    final cat = pack.cats.first;
+    final from = cat.p;
+    pack.tap(cat.hit);
+    for (var i = 0; i < 60; i++) {
+      pack.tick(1 / 60, tablet);
+    }
+    expect(cat.p.dx, lessThan(from.dx + 5));
+  });
+
   test('paused, they sit or lie down and stay put', () {
     final pack = CatPack();
     run(pack, 5);

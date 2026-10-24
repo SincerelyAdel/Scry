@@ -100,7 +100,7 @@ class _TagSweepCardState extends State<TagSweepCard>
       return DecoratedBox(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(radius),
-          gradient: c.goldViolet(alpha: 0.55),
+          gradient: c.goldViolet(alpha: c.isDark ? 0.55 : 0.8),
         ),
         child: Padding(
           padding: const EdgeInsets.all(1),

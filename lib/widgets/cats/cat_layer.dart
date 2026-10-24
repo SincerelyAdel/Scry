@@ -4,8 +4,9 @@ import 'package:flutter/scheduler.dart';
 import 'cat_painter.dart';
 import 'cat_sim.dart';
 
-/// Cats wandering about behind [child], seen from above. They keep to the
-/// middle of the page; a tap on one sends it running (and its neighbours).
+/// Cats wandering about over [child], seen from above. They keep to the
+/// margins beside the text ([textWidth]); a tap on one sends it running
+/// (and its neighbours).
 /// [resting] makes them sit or lie down; [shooed] sends them to the edges,
 /// where only their heads peek in.
 ///
@@ -19,6 +20,7 @@ class CatLayer extends StatefulWidget {
     this.resting = false,
     this.shooed = false,
     this.opacity = 1,
+    this.textWidth = 0,
   });
 
   final Widget child;
@@ -26,8 +28,12 @@ class CatLayer extends StatefulWidget {
   final bool resting;
   final bool shooed;
 
-  /// How strongly the cats show, so they don't fight with the text.
+  /// How strongly the cats show.
   final double opacity;
+
+  /// The width of the text column down the middle: the cats keep to the
+  /// margins either side. 0 lets them roam the middle.
+  final double textWidth;
 
   @override
   State<CatLayer> createState() => _CatLayerState();
@@ -96,6 +102,7 @@ class _CatLayerState extends State<CatLayer>
     return LayoutBuilder(
       builder: (context, constraints) {
         _size = constraints.biggest;
+        _pack.textWidth = widget.textWidth;
         return Listener(
           behavior: HitTestBehavior.translucent,
           onPointerDown: (e) {
@@ -122,6 +129,9 @@ class _CatLayerState extends State<CatLayer>
           child: Stack(
             fit: StackFit.expand,
             children: [
+              widget.child,
+              // On top of the page, but never in the way: touches go
+              // straight through to the text underneath.
               IgnorePointer(
                 child: RepaintBoundary(
                   child: CustomPaint(
@@ -133,7 +143,6 @@ class _CatLayerState extends State<CatLayer>
                   ),
                 ),
               ),
-              widget.child,
             ],
           ),
         );

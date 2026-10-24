@@ -58,7 +58,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
       violet.withValues(alpha: alpha),
       violetLight.withValues(alpha: alpha),
     ],
-    stops: const [0, 0.35, 0.75, 1],
+    // On light pages gold is the weaker of the two; give purple more room.
+    stops: isDark ? const [0, 0.35, 0.75, 1] : const [0, 0.25, 0.6, 1],
   );
 
   @override
@@ -105,8 +106,9 @@ const lightPalette = AppPalette(
   onButton: Color(0xFF1F1E1D),
   success: Color(0xFF3F7D4E),
   danger: Color(0xFFB8432F),
-  violet: Color(0xFF6A3FB5),
-  violetLight: Color(0xFF7B4FC9),
+  // Brighter than the icon's deep purple, so it shows on cream.
+  violet: Color(0xFF7A3CE8),
+  violetLight: Color(0xFF9A5CF5),
 );
 
 /// Serif headings (Android maps 'serif' to Noto Serif).

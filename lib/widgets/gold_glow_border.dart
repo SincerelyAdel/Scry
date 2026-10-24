@@ -41,15 +41,16 @@ class _GlowPainter extends CustomPainter {
     final strength = palette.isDark ? 1.0 : 0.7;
 
     // Gold at the top left and bottom right, purple in the other corners.
-    Shader sweep(Color gold, Color purple, double alpha) => SweepGradient(
-      colors: [
-        gold.withValues(alpha: alpha),
-        purple.withValues(alpha: alpha),
-        gold.withValues(alpha: alpha),
-        purple.withValues(alpha: alpha),
-        gold.withValues(alpha: alpha),
-      ],
-    ).createShader(rect);
+    // On light pages the purple keeps its full strength, so it still shows.
+    final purpleStrength = palette.isDark ? 1.0 : 1.15;
+    Shader sweep(Color gold, Color purple, double alpha) {
+      final g = gold.withValues(alpha: alpha);
+      final p = purple.withValues(
+        alpha: (alpha / strength * purpleStrength).clamp(0.0, 1.0),
+      );
+      return SweepGradient(colors: [g, p, g, p, g]).createShader(rect);
+    }
+
     canvas.drawRect(
       rect,
       Paint()

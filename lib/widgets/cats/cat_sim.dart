@@ -264,6 +264,9 @@ class Cat {
   double nextEar, vel = 0, moved = 0, phase;
   String gait = 'sit';
   int side;
+
+  /// Which margin it lives in: 0 left, 1 right.
+  int zone = 0;
   final double seed;
   bool fleeing = false, peeking = false;
   _Spot? _spot;
@@ -361,6 +364,38 @@ class CatPack {
 
   /// How many cats (one of each breed, up to six).
   final int count;
+
+  /// The width of the text down the middle of the page, which the cats
+  /// keep out of: they live in the margins either side. 0 lets them roam
+  /// the middle instead.
+  double textWidth = 0;
+
+  /// Narrowest a margin gets for cats: on a phone they keep to a strip
+  /// along each edge.
+  static const _minZone = 70.0;
+
+  /// The left and right of [c]'s margin.
+  (double, double) _zone(Cat c) {
+    final w = size.width;
+    if (textWidth <= 0 || textWidth >= w) return (0, w);
+    final gap = (w - textWidth) / 2 - 6;
+    return c.zone == 0
+        ? (0, math.max(gap, _minZone))
+        : (math.min(w - gap, w - _minZone), w);
+  }
+
+  /// A spot in [c]'s margin, or the middle of the page when there's no
+  /// text to keep clear of.
+  Offset _home(Cat c) {
+    if (textWidth <= 0) return _central(size);
+    final (l, r) = _zone(c);
+    final inset = math.min(26.0, (r - l) * 0.3);
+    return Offset(
+      _rand(l + inset, r - inset),
+      _rand(size.height * 0.1, size.height * 0.9),
+    );
+  }
+
   final List<Cat> cats = [];
   Size size = Size.zero;
   double _time = 0;
@@ -373,8 +408,11 @@ class CatPack {
   void _ensure(Size newSize) {
     size = newSize;
     if (cats.isNotEmpty || size.isEmpty) return;
-    for (final b in catBreeds.take(count)) {
-      final c = Cat(b, size);
+    for (final (i, b) in catBreeds.take(count).indexed) {
+      final c = Cat(b, size)..zone = i.isEven ? 0 : 1;
+      c
+        ..p = _home(c)
+        ..resetTrail();
       cats.add(c);
       c.later(_rand(0.4, 2.8), () => _roam(c));
     }
@@ -464,7 +502,13 @@ class CatPack {
     // Leave along the current heading, so turns curve like a real walk.
     final lead = math.min(26 * c.s, d * 0.3);
     final p1 = c.p + Offset(math.cos(c.h), math.sin(c.h)) * lead;
-    final bend = _rand(-0.28, 0.28) * d;
+    var bend = _rand(-0.28, 0.28) * d;
+    if (textWidth > 0 && !c.fleeing && !c.peeking) {
+      // Narrow margins: curve less, so the path stays in them.
+      final (l, r) = _zone(c);
+      final most = (r - l) * 0.3;
+      bend = bend.clamp(-most, most);
+    }
     final delta = target - c.p;
     final mid = (p1 + target) / 2 + Offset(-delta.dy / d, delta.dx / d) * bend;
     c.gait = gait;
@@ -507,7 +551,7 @@ class CatPack {
     Offset? best;
     var bestScore = -1.0;
     for (var i = 0; i < 10; i++) {
-      final q = _central(size);
+      final q = _home(c);
       final d = (q - c.p).distance;
       if (d < 50) continue;
       final near = others.fold(1e9, (m, o) => math.min(m, (q - o.p).distance));
@@ -523,13 +567,7 @@ class CatPack {
         : r < 0.85
         ? 'trot'
         : 'run';
-    _moveTo(
-      c,
-      best ?? _central(size),
-      gait,
-      _speed[gait]! * c.s,
-      () => _rest(c),
-    );
+    _moveTo(c, best ?? _home(c), gait, _speed[gait]! * c.s, () => _rest(c));
   }
 
   /// After a stretch: look around, sit a while, or sit and wash.
@@ -577,6 +615,10 @@ class CatPack {
       dir = Offset(math.cos(a), math.sin(a));
     }
     dir = dir / dir.distance;
+    // Out through its own side, never across the text.
+    if (textWidth > 0 && (c.zone == 0) == (dir.dx > 0)) {
+      dir = Offset(-dir.dx, dir.dy);
+    }
     // Run until the tail tip is past the edge too.
     final out = 175 * c.s;
     final w = size.width, h = size.height;
@@ -608,13 +650,18 @@ class CatPack {
       return;
     }
     final w = size.width, h = size.height;
-    final start = switch (_rng.nextInt(4)) {
-      0 => Offset(_rand(40, w - 40), -70),
-      1 => Offset(w + 70, _rand(40, h - 40)),
-      2 => Offset(_rand(40, w - 40), h + 70),
-      _ => Offset(-70, _rand(40, h - 40)),
+    // In from its own side, or the top or bottom of its margin.
+    final (l, r) = _zone(c);
+    final x = _rand(l + 20, math.max(l + 20, r - 20));
+    final start = switch (_rng.nextInt(3)) {
+      0 => Offset(x, -70),
+      1 => Offset(x, h + 70),
+      _ =>
+        textWidth > 0
+            ? Offset(c.zone == 0 ? -70 : w + 70, _rand(40, h - 40))
+            : Offset(_rng.nextBool() ? -70 : w + 70, _rand(40, h - 40)),
     };
-    final target = _central(size);
+    final target = _home(c);
     c
       ..p = start
       ..h = math.atan2(target.dy - start.dy, target.dx - start.dx)
@@ -741,7 +788,7 @@ class CatPack {
     c._spot = null;
     c.fleeing = false;
     c._tween({_Prop.puff: 0}, 0.3);
-    final target = _central(size);
+    final target = _home(c);
     final off =
         c.p.dx < 0 || c.p.dy < 0 || c.p.dx > size.width || c.p.dy > size.height;
     if (off) c.h = math.atan2(target.dy - c.p.dy, target.dx - c.p.dx);
