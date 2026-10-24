@@ -162,6 +162,9 @@ class _Timeline {
   final List<_Step> steps;
   final void Function()? onComplete;
   int _i = 0;
+
+  /// True while on a path (not sitting, washing or waiting).
+  bool get moving => _i < steps.length && steps[_i] is _Move;
   double _elapsed = 0;
   bool _started = false;
 
@@ -221,7 +224,7 @@ class CatPose {
     required this.patchesB,
     required this.haunch,
     required this.tail,
-    required this.tailBase,
+    required this.tailSpine,
     required this.tailWidth,
     required this.tailRings,
     required this.legs,
@@ -234,7 +237,8 @@ class CatPose {
     required this.earR,
   });
 
-  final Path outline, back, tail, tailBase, legs, stripes, tailRings;
+  /// The tail's outline, and the line down its middle.
+  final Path outline, back, tail, tailSpine, legs, stripes, tailRings;
   final Offset shadowOffset, furOrigin;
   final double furAngle, tailWidth;
   final List<(Offset, double)> patchesA, patchesB;
@@ -278,6 +282,12 @@ class Cat {
   bool fleeing = false, peeking = false;
   _Spot? _spot;
   Offset? _last;
+
+  /// Where it's walking to, so others don't head for the same spot.
+  Offset? target;
+
+  /// How long it's been waiting for another cat to get out of the way.
+  double _blocked = 0;
 
   _Timeline? _tl, _wait;
   final List<_Timeline> _fx = [];
@@ -417,8 +427,20 @@ class CatPack {
     if (cats.isNotEmpty || size.isEmpty) return;
     for (final (i, b) in catBreeds.take(count).indexed) {
       final c = Cat(b, size)..zone = i.isEven ? 0 : 1;
+      // Start apart from the others.
+      var best = _home(c);
+      var bestGap = 0.0;
+      for (var k = 0; k < 24; k++) {
+        final q = _home(c);
+        final gap = cats.fold(1e9, (m, o) => math.min(m, (q - o.p).distance));
+        if (gap > bestGap) {
+          bestGap = gap;
+          best = q;
+        }
+      }
       c
-        ..p = _home(c)
+        ..p = best
+        ..target = best
         ..resetTrail();
       cats.add(c);
       c.later(_rand(0.4, 2.8), () => _roam(c));
@@ -524,6 +546,7 @@ class CatPack {
     final delta = target - c.p;
     final mid = (p1 + target) / 2 + Offset(-delta.dy / d, delta.dx / d) * bend;
     c.gait = gait;
+    c.target = target;
     final steps = <_Step>[];
     if (c.sit > 0.05 || c.groom > 0.05 || c.lie > 0.05) {
       steps.add(
@@ -561,14 +584,21 @@ class CatPack {
       _settle(c);
       return;
     }
-    final others = cats.where((o) => o != c && !o.fleeing);
+    final others = cats.where((o) => o != c && !o.fleeing && !o.peeking);
     Offset? best;
     var bestScore = -1.0;
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < 16; i++) {
       final q = _home(c);
       final d = (q - c.p).distance;
       if (d < 50) continue;
-      final near = others.fold(1e9, (m, o) => math.min(m, (q - o.p).distance));
+      // Away from where the others are and where they're going.
+      final near = others.fold(
+        1e9,
+        (m, o) => math.min(
+          m,
+          math.min((q - o.p).distance, (q - (o.target ?? o.p)).distance),
+        ),
+      );
       final score = math.min(near, 170) + math.min(d, 260) * 0.25;
       if (score > bestScore) {
         bestScore = score;
@@ -834,11 +864,41 @@ class CatPack {
       wait.onComplete?.call();
     }
     final tl = c._tl;
-    if (tl != null && tl.update(dt)) {
-      if (c._tl == tl) c._tl = null;
-      tl.onComplete?.call();
+    if (tl != null && tl.moving && _inTheWay(c) != null) {
+      // Someone's just ahead: wait for them, and after a while go
+      // somewhere else instead.
+      c._blocked += dt;
+      if (c._blocked > 2.2) {
+        c._blocked = 0;
+        _roam(c);
+      }
+    } else {
+      c._blocked = 0;
+      if (tl != null && tl.update(dt)) {
+        if (c._tl == tl) c._tl = null;
+        tl.onComplete?.call();
+      }
     }
     c._fx.removeWhere((f) => f.update(dt));
+  }
+
+  /// Another cat right in front of walking [c], if one is. Of two cats
+  /// walking into each other, the first in the pack goes on.
+  Cat? _inTheWay(Cat c) {
+    if (c.fleeing || c.peeking) return null;
+    final ahead = Offset(math.cos(c.h), math.sin(c.h));
+    for (final o in cats) {
+      if (o == c || o.fleeing || o.peeking) continue;
+      final to = o.hit - c.p;
+      final d = to.distance;
+      if (d > 52 * (c.s + o.s) / 2 || d == 0) continue;
+      // In front, not beside or behind.
+      if ((to.dx * ahead.dx + to.dy * ahead.dy) / d < 0.35) continue;
+      final oMoving = o._tl?.moving ?? false;
+      if (oMoving && cats.indexOf(o) > cats.indexOf(c)) continue;
+      return o;
+    }
+    return null;
   }
 
   void _advance(Cat c, double dt) {
@@ -1024,15 +1084,35 @@ class CatPack {
       tail.add(_lerpO(_lerpO(free, wrap, f), rest, lie));
     }
     final tw = 1 + 0.8 * puff;
+    // One shape tapering smoothly from the body to a rounded tip, rather
+    // than strokes of two widths.
+    double tailHalf(int i) => _lerp(3.3, 1.5, i / 8) * s * tw;
+    Offset tailNormal(int i) {
+      final a = tail[math.max(i - 1, 0)], b = tail[math.min(i + 1, 8)];
+      final d = b - a;
+      final l = d.distance;
+      return l == 0 ? Offset.zero : Offset(-d.dy / l, d.dx / l);
+    }
+
+    final tailLeft = <Offset>[], tailRight = <Offset>[];
+    for (var i = 0; i <= 8; i++) {
+      final n = tailNormal(i);
+      tailLeft.add(tail[i] + n * tailHalf(i));
+      tailRight.insert(0, tail[i] - n * tailHalf(i));
+    }
+    final end = tail[8] - tail[7];
+    final tip =
+        tail[8] +
+        (end.distance == 0 ? Offset.zero : end / end.distance) *
+            (tailHalf(8) * 0.9);
+    // Starts a little inside the body, so it grows out of the rump.
+    final tailShape = _closedPath([...tailLeft, tip, ...tailRight]);
     final rings = Path();
     if (c.b.stripe != null) {
       for (var i = 2; i <= 8; i += 2) {
-        final a = tail[i - 1], b = tail[i];
-        final l = (b - a).distance;
-        if (l == 0) continue;
-        final n = Offset(-(b.dy - a.dy) / l, (b.dx - a.dx) / l);
-        final rw = 2.4 * s * tw;
-        final p1 = b + n * rw, p2 = b - n * rw;
+        final n = tailNormal(i);
+        final w = tailHalf(i) * 1.05;
+        final p1 = tail[i] + n * w, p2 = tail[i] - n * w;
         rings
           ..moveTo(p1.dx, p1.dy)
           ..lineTo(p2.dx, p2.dy);
@@ -1071,8 +1151,8 @@ class CatPack {
       patchesA: pa,
       patchesB: pb,
       haunch: haunch,
-      tail: _openPath(tail),
-      tailBase: _openPath(tail.sublist(0, 4)),
+      tail: tailShape,
+      tailSpine: _openPath(tail),
       tailWidth: 4.6 * s * tw,
       tailRings: rings,
       legs: legs,

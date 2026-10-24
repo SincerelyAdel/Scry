@@ -106,9 +106,11 @@ class CatPainter extends CustomPainter {
 
     // Tail.
     canvas
-      ..drawPath(p.tail, stroke(b.fringe, p.tailWidth * 1.48, 0.18))
-      ..drawPath(p.tail, stroke(b.tail, p.tailWidth))
-      ..drawPath(p.tailBase, stroke(b.tail, 6.6 * s))
+      ..drawPath(p.tail, Paint()..color = b.tail)
+      // Lighter along the top, darker at the edges, so it looks round.
+      ..drawPath(p.tailSpine, stroke(b.light, p.tailWidth * 0.35, 0.18))
+      ..drawPath(p.tail, stroke(b.rim, 0.7 * s, 0.35))
+      ..drawPath(p.tail, stroke(b.fringe, 1.2 * s, 0.12))
       ..drawPath(p.tailRings, stroke(b.stripeColor, 2.2 * s, b.stripeOpacity));
 
     // Body, then its coat inside the outline.
