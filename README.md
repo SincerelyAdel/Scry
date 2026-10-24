@@ -118,6 +118,18 @@ the two sides; the choice is remembered.
   have. Reading past the book's last chapter carries on from the site.
   **Import EPUB** in the library adds a book on its own instead, with no
   site at all.
+- **Reader**: the chapter's text only (the ads the site puts inside it are
+  removed), with its own text size, line spacing and serif or sans font
+  (the Aa button). It keeps the screen on, remembers how far down the
+  chapter you are, saves the next chapter ahead of time, and keeps the last
+  60 chapters of each novel for offline reading. **Next chapter** at the end;
+  at the latest chapter, **Check again** looks for a new one.
+- **Cats** (Aa → Cats, off by default): realistic cats seen from above
+  wander about the middle of the page behind the text, at a walk, trot or
+  run, with paws that plant and step. They sit, wash and look around; tap
+  one and it puffs up and bolts off the page (its neighbours too), then
+  creeps back. The paw button makes them sit or lie down; the eye button
+  shoos them to the edges, where only their heads peek in.
 
 Parsing lives in `lib/services/ranobes.dart` (search results, the novel
 page, the chapter list's embedded JSON, chapter text); the site's markup is
