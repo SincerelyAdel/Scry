@@ -22,8 +22,10 @@ class CatPainter extends CustomPainter {
       const k = 6.0;
       final rec = ui.PictureRecorder();
       final canvas = Canvas(rec)..scale(k);
+      // Fine hair, fainter on light coats so they don't look lined.
+      final pale = b.base.computeLuminance() > 0.5;
       final dark = Paint()
-        ..color = b.dark.withValues(alpha: 0.55)
+        ..color = b.dark.withValues(alpha: pale ? 0.28 : 0.55)
         ..strokeWidth = 0.42
         ..strokeCap = StrokeCap.round;
       final light = Paint()
@@ -78,6 +80,13 @@ class CatPainter extends CustomPainter {
       ..strokeWidth = width
       ..strokeCap = StrokeCap.round;
 
+    // A stroke with soft, blurred edges: markings that fade into the coat.
+    Paint soft(Color color, double width, double alpha, double blur) =>
+        stroke(color, width, alpha)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, blur);
+    // Light coats show edge shading more, so it's lighter on them.
+    final light = b.base.computeLuminance() > 0.5;
+
     // Shadow under the body.
     canvas.drawPath(
       p.outline.shift(p.shadowOffset),
@@ -100,18 +109,25 @@ class CatPainter extends CustomPainter {
       );
       canvas
         ..drawOval(r, Paint()..color = b.paws)
-        ..drawOval(r, stroke(b.rim, 0.5, 0.6))
+        ..drawOval(r, stroke(b.rim, 0.5, 0.25))
         ..restore();
     }
 
     // Tail.
     canvas
+      ..drawPath(
+        p.tail.shift(p.shadowOffset * 0.7),
+        Paint()
+          ..color = Colors.black.withValues(alpha: 0.3)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, 1.8 * s),
+      )
       ..drawPath(p.tail, Paint()..color = b.tail)
       // Lighter along the top, darker at the edges, so it looks round.
       ..drawPath(p.tailSpine, stroke(b.light, p.tailWidth * 0.35, 0.18))
-      ..drawPath(p.tail, stroke(b.rim, 0.7 * s, 0.35))
-      ..drawPath(p.tail, stroke(b.fringe, 1.2 * s, 0.12))
-      ..drawPath(p.tailRings, stroke(b.stripeColor, 2.2 * s, b.stripeOpacity));
+      ..drawPath(
+        p.tailRings,
+        soft(b.stripeColor, 2.4 * s, b.stripeOpacity * 0.85, 0.7 * s),
+      );
 
     // Body, then its coat inside the outline.
     canvas.drawPath(p.outline, Paint()..color = b.base);
@@ -135,19 +151,25 @@ class CatPainter extends CustomPainter {
     }
     if (b.stripe != null) {
       canvas
-        ..drawPath(p.back, stroke(b.stripeColor, 3.8 * s, b.stripeOpacity))
-        ..drawPath(p.stripes, stroke(b.stripeColor, 2.3 * s, b.stripeOpacity));
+        ..drawPath(
+          p.back,
+          soft(b.stripeColor, 4.4 * s, b.stripeOpacity * 0.85, 1.3 * s),
+        )
+        ..drawPath(
+          p.stripes,
+          soft(b.stripeColor, 2.6 * s, b.stripeOpacity * 0.9, 0.8 * s),
+        );
     }
     // A soft sheen along the back.
     final sheen = b.sheenOpacity * 0.6;
     for (final w in [17.0, 10.5, 5.0]) {
       canvas.drawPath(p.back, stroke(b.light, w * s, sheen));
     }
-    // Darker edges, so the body looks round.
+    // Shading that fades in towards the edges, so the body looks round,
+    // with no line around it.
     canvas
-      ..drawPath(p.outline, stroke(b.rim, 6 * s, 0.5))
+      ..drawPath(p.outline, soft(b.rim, 9 * s, light ? 0.18 : 0.32, 3.5 * s))
       ..restore();
-    canvas.drawPath(p.outline, stroke(b.fringe, 1.8 * s, 0.22));
 
     _head(canvas, c, p);
   }
@@ -174,15 +196,17 @@ class CatPainter extends CustomPainter {
     'M4.2 -4.4 L6.8 -3.1 M4.2 4.4 L6.8 3.1',
   );
   static final _eyes = _svg(
-    'M3.5 -6.6 Q6 -8.2 8.4 -6.3 Q6 -5.2 3.5 -6.6 Z '
-    'M3.5 6.6 Q6 8.2 8.4 6.3 Q6 5.2 3.5 6.6 Z',
+    // Open, rounded almonds rather than slits.
+    'M3.3 -6.5 Q5.8 -9.3 8.6 -6.4 Q5.9 -4.4 3.3 -6.5 Z '
+    'M3.3 6.5 Q5.8 9.3 8.6 6.4 Q5.9 4.4 3.3 6.5 Z',
   );
-  static final _pupils = _svg('M6 -7.5 L6.2 -5.7 M6 7.5 L6.2 5.7');
   static final _lidsPath = _svg(
-    'M3.2 -6.7 Q6 -8.5 8.7 -6.4 Q6 -5.2 3.2 -6.7 Z '
-    'M3.2 6.7 Q6 8.5 8.7 6.4 Q6 5.2 3.2 6.7 Z',
+    'M3 -6.6 Q5.8 -9.6 8.9 -6.4 Q5.9 -4.1 3 -6.6 Z '
+    'M3 6.6 Q5.8 9.6 8.9 6.4 Q5.9 4.1 3 6.6 Z',
   );
-  static final _brows = _svg('M3.2 -7.3 Q6 -9 8.8 -6.6 M3.2 7.3 Q6 9 8.8 6.6');
+  static final _brows = _svg(
+    'M3.1 -7.6 Q5.8 -9.9 8.9 -6.9 M3.1 7.6 Q5.8 9.9 8.9 6.9',
+  );
   static final _nosePath = _svg(
     'M12.1 -1.15 L13.5 0 L12.1 1.15 Q11.6 0 12.1 -1.15 Z',
   );
@@ -228,7 +252,7 @@ class CatPainter extends CustomPainter {
       if (mirror) canvas.scale(1, -1);
       canvas
         ..drawPath(_earOuter, fill(b.ear))
-        ..drawPath(_earOuter, line(b.rim, 0.5, 0.7))
+        ..drawPath(_earOuter, line(b.rim, 0.5, 0.3))
         ..drawPath(_earInner, fill(b.earIn, 0.55))
         ..drawPath(_earTufts, line(b.whisker, 0.3, 0.6))
         ..restore();
@@ -284,7 +308,7 @@ class CatPainter extends CustomPainter {
           colors: [
             b.light.withValues(alpha: 0.38),
             b.light.withValues(alpha: 0),
-            b.rim.withValues(alpha: 0.5),
+            b.rim.withValues(alpha: 0.35),
           ],
           stops: const [0, 0.55, 1],
         ).createShader(_headBox),
@@ -297,14 +321,25 @@ class CatPainter extends CustomPainter {
     }
     canvas
       ..drawPath(_eyes, fill(b.eye))
-      ..drawPath(_pupils, line(const Color(0xFF080808), 0.75))
-      ..drawCircle(const Offset(6.9, -6.8), 0.38, fill(Colors.white, 0.9))
-      ..drawCircle(const Offset(6.9, 6.8), 0.38, fill(Colors.white, 0.9));
+      // Round pupils, a catchlight in each.
+      ..drawOval(
+        Rect.fromCenter(
+          center: const Offset(6, -6.75),
+          width: 1.9,
+          height: 2.2,
+        ),
+        fill(const Color(0xFF0A0A0A)),
+      )
+      ..drawOval(
+        Rect.fromCenter(center: const Offset(6, 6.75), width: 1.9, height: 2.2),
+        fill(const Color(0xFF0A0A0A)),
+      )
+      ..drawCircle(const Offset(6.55, -7.35), 0.45, fill(Colors.white, 0.9))
+      ..drawCircle(const Offset(6.55, 6.15), 0.45, fill(Colors.white, 0.9));
     if (p.lids > 0.01) canvas.drawPath(_lidsPath, fill(b.base, p.lids));
     canvas
-      ..drawPath(_brows, line(b.rim, 0.55, 0.7))
+      ..drawPath(_brows, line(b.rim, 0.5, 0.3))
       ..drawPath(_nosePath, fill(b.nose))
-      ..drawPath(_headShape, line(b.fringe, 0.9, 0.25))
       ..drawPath(_whiskers, line(b.whisker, 0.32, 0.72))
       ..restore();
   }
