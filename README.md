@@ -124,9 +124,10 @@ the two sides; the choice is remembered.
   chapter you are, saves the next chapter ahead of time, and keeps the last
   60 chapters of each novel for offline reading. **Next chapter** at the end;
   at the latest chapter, **Check again** looks for a new one.
-- **Cats** (the cat button in the reader, off by default): realistic cats seen from above
-  wander about the middle of the page behind the text, at a walk, trot or
-  run, with paws that plant and step. They sit, wash and look around; tap
+- **Cats** (the cat button in the reader, off by default): realistic cats
+  seen from above wander about the margins either side of the text (a
+  strip along each edge on a phone), over the page but never in the way of
+  touches, at a walk, trot or run, with paws that plant and step. They sit, wash and look around; tap
   one and it puffs up and bolts off the page (its neighbours too), then
   creeps back. The cat button opens every option: cats on or off, Rest
   (they sit or lie down) and Shoo away (to the edges, where only their

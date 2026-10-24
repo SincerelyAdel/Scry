@@ -89,9 +89,12 @@ class _Props implements _Step {
 
 /// Moves the cat along a smooth curve through the given points.
 class _Move implements _Step {
-  _Move(this.cat, this.via, this.duration, this.ease);
+  _Move(this.cat, this.via, this.duration, this.ease, {this.minX, this.maxX});
   final Cat cat;
   final List<Offset> via;
+
+  /// Keeps the path between these, e.g. inside a margin.
+  final double? minX, maxX;
   @override
   final double duration;
   final _Ease ease;
@@ -134,7 +137,11 @@ class _Move implements _Step {
     }
     final a = _len[i - 1], b = _len[i];
     final f = b > a ? ((want - a) / (b - a)).clamp(0.0, 1.0) : 1.0;
-    cat.p = _lerpO(_pts[i - 1], _pts[i], f);
+    var p = _lerpO(_pts[i - 1], _pts[i], f);
+    if (minX != null && maxX != null && minX! <= maxX!) {
+      p = Offset(p.dx.clamp(minX!, maxX!), p.dy);
+    }
+    cat.p = p;
   }
 }
 
@@ -503,11 +510,16 @@ class CatPack {
     final lead = math.min(26 * c.s, d * 0.3);
     final p1 = c.p + Offset(math.cos(c.h), math.sin(c.h)) * lead;
     var bend = _rand(-0.28, 0.28) * d;
-    if (textWidth > 0 && !c.fleeing && !c.peeking) {
-      // Narrow margins: curve less, so the path stays in them.
+    double? minX, maxX;
+    if (textWidth > 0 && !c.peeking) {
+      // Narrow margins: curve less, and never stray out of them, running
+      // away included.
       final (l, r) = _zone(c);
       final most = (r - l) * 0.3;
-      bend = bend.clamp(-most, most);
+      if (!c.fleeing) bend = bend.clamp(-most, most);
+      // Coming in from the far side of the screen edge is fine.
+      minX = c.zone == 0 ? double.negativeInfinity : l + 4;
+      maxX = c.zone == 0 ? r - 4 : double.infinity;
     }
     final delta = target - c.p;
     final mid = (p1 + target) / 2 + Offset(-delta.dy / d, delta.dx / d) * bend;
@@ -532,6 +544,8 @@ class CatPack {
         [p1, mid, target],
         math.max(0.5, d * 1.15 / speed),
         gait == 'walk' ? _sineInOut : _power1InOut,
+        minX: minX,
+        maxX: maxX,
       ),
     );
     c._tl = _Timeline(steps, onComplete: onDone);

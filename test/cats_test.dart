@@ -49,14 +49,16 @@ void main() {
         );
       }
     }
-    // A scared cat leaves through its own side, not across the text.
+    // A scared cat leaves through its own side, never across the text.
     final cat = pack.cats.first;
-    final from = cat.p;
-    pack.tap(cat.hit);
-    for (var i = 0; i < 60; i++) {
+    expect(pack.tap(cat.hit), isTrue);
+    for (var i = 0; i < 180; i++) {
       pack.tick(1 / 60, tablet);
+      expect(cat.p.dx, lessThan(290));
     }
-    expect(cat.p.dx, lessThan(from.dx + 5));
+    // Off the page: out its side, or the top or bottom of its margin.
+    final p = cat.p;
+    expect(p.dx < 0 || p.dy < 0 || p.dy > tablet.height, isTrue);
   });
 
   test('paused, they sit or lie down and stay put', () {
