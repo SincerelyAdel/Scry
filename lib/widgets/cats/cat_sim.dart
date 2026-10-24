@@ -232,7 +232,6 @@ class CatPose {
     required this.head,
     required this.headAngle,
     required this.headScale,
-    required this.lids,
     required this.earL,
     required this.earR,
   });
@@ -247,7 +246,7 @@ class CatPose {
   /// Paw centre, size and angle.
   final List<(Offset, double, double, double)> paws;
   final Offset head;
-  final double headAngle, headScale, lids, earL, earR;
+  final double headAngle, headScale, earL, earR;
 }
 
 class Cat {
@@ -1160,7 +1159,6 @@ class CatPack {
       head: hp,
       headAngle: headAngle,
       headScale: s * (1 - 0.05 * c.groom - 0.04 * lie),
-      lids: math.min(0.9, lie * 0.9),
       earL: (flat + c.ear[0] * 40) * math.pi / 180,
       earR: (-flat - c.ear[1] * 40) * math.pi / 180,
     );
