@@ -10,6 +10,7 @@ import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../theme.dart';
+import '../../widgets/cats/cat_layer.dart';
 import '../../widgets/page_gestures.dart';
 import '../../widgets/ui.dart';
 import 'human_check_screen.dart';
@@ -48,6 +49,10 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   String? _error;
   Object? _failure;
   String? _pendingUrl;
+
+  /// The cats (when on): lying down, or chased to the edges.
+  bool _catsResting = false;
+  bool _catsShooed = false;
 
   /// How far down the chapter, 0 to 1; drives the bar at the bottom.
   final _progress = ValueNotifier<double>(0);
@@ -253,68 +258,152 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         onPrevious: canMove && chapter.prevUrl != null ? _previous : null,
         nextLabel: 'Next chapter',
         previousLabel: 'Previous chapter',
-        child: Stack(
-          children: [
-            CustomScrollView(
-              controller: _scroll,
-              slivers: [
-                SliverAppBar(
-                  floating: true,
-                  snap: true,
-                  title: Text(
-                    chapter?.title ?? _novel.title,
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                  actions: [
-                    IconButton(
-                      tooltip: 'Text',
-                      icon: const Icon(Icons.text_fields),
-                      onPressed: _textSettings,
+        child: CatLayer(
+          enabled: settings.novelCats,
+          resting: _catsResting,
+          shooed: _catsShooed,
+          opacity: c.isDark ? 0.82 : 0.9,
+          child: Stack(
+            children: [
+              CustomScrollView(
+                controller: _scroll,
+                slivers: [
+                  SliverAppBar(
+                    floating: true,
+                    snap: true,
+                    title: Text(
+                      chapter?.title ?? _novel.title,
+                      style: const TextStyle(fontSize: 16),
                     ),
-                    IconButton(
-                      tooltip: 'Chapters',
-                      icon: const Icon(Icons.format_list_numbered),
-                      // The novel's page is always under the reader.
-                      onPressed: () => Navigator.of(context).maybePop(),
-                    ),
-                    if (chapter != null && chapter.url.startsWith('http'))
+                    actions: [
                       IconButton(
-                        tooltip: 'Open on ranobes.net',
-                        icon: const Icon(Icons.open_in_browser),
-                        onPressed: () => launchUrl(
-                          Uri.parse(chapter.url),
-                          mode: LaunchMode.externalApplication,
-                        ),
+                        tooltip: 'Text',
+                        icon: const Icon(Icons.text_fields),
+                        onPressed: _textSettings,
                       ),
-                  ],
+                      IconButton(
+                        tooltip: 'Chapters',
+                        icon: const Icon(Icons.format_list_numbered),
+                        // The novel's page is always under the reader.
+                        onPressed: () => Navigator.of(context).maybePop(),
+                      ),
+                      if (chapter != null && chapter.url.startsWith('http'))
+                        IconButton(
+                          tooltip: 'Open on ranobes.net',
+                          icon: const Icon(Icons.open_in_browser),
+                          onPressed: () => launchUrl(
+                            Uri.parse(chapter.url),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                        ),
+                    ],
+                  ),
+                  content,
+                ],
+              ),
+              // Loading the next chapter over the current one.
+              if (_loading && chapter != null)
+                const Positioned(
+                  left: 0,
+                  right: 0,
+                  top: 0,
+                  child: LinearProgressIndicator(minHeight: 2),
                 ),
-                content,
-              ],
-            ),
-            // Loading the next chapter over the current one.
-            if (_loading && chapter != null)
-              const Positioned(
+              Positioned(
                 left: 0,
                 right: 0,
-                top: 0,
-                child: LinearProgressIndicator(minHeight: 2),
-              ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: ValueListenableBuilder<double>(
-                valueListenable: _progress,
-                builder: (_, value, _) => LinearProgressIndicator(
-                  value: value,
-                  minHeight: 2,
-                  backgroundColor: Colors.transparent,
+                bottom: 0,
+                child: ValueListenableBuilder<double>(
+                  valueListenable: _progress,
+                  // Gold running into the icon's purple as you read on.
+                  builder: (_, value, _) => Align(
+                    alignment: Alignment.centerLeft,
+                    child: FractionallySizedBox(
+                      widthFactor: value.clamp(0.0, 1.0),
+                      child: Container(
+                        height: 2,
+                        decoration: BoxDecoration(
+                          gradient: c.goldViolet(
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ],
+              if (settings.novelCats)
+                Positioned(
+                  right: 14,
+                  bottom: 14 + MediaQuery.paddingOf(context).bottom,
+                  child: _CatButtons(
+                    resting: _catsResting,
+                    shooed: _catsShooed,
+                    onRest: () => setState(() => _catsResting = !_catsResting),
+                    onShoo: () => setState(() => _catsShooed = !_catsShooed),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Two small round buttons for the cats: lie down (or get up), and shoo
+/// them to the edges (or call them back).
+class _CatButtons extends StatelessWidget {
+  const _CatButtons({
+    required this.resting,
+    required this.shooed,
+    required this.onRest,
+    required this.onShoo,
+  });
+
+  final bool resting;
+  final bool shooed;
+  final VoidCallback onRest;
+  final VoidCallback onShoo;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    Widget button(IconData icon, String tip, bool on, VoidCallback onTap) =>
+        Tooltip(
+          message: tip,
+          child: Material(
+            color: on ? c.button : c.surface.withValues(alpha: 0.92),
+            shape: CircleBorder(side: BorderSide(color: c.border)),
+            child: InkWell(
+              customBorder: const CircleBorder(),
+              onTap: onTap,
+              child: SizedBox(
+                width: 40,
+                height: 40,
+                child: Icon(icon, size: 20, color: on ? c.onButton : c.muted),
+              ),
+            ),
+          ),
+        );
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button(
+          Icons.pets,
+          resting ? 'Let the cats roam' : 'Let the cats rest',
+          resting,
+          onRest,
+        ),
+        const SizedBox(width: 10),
+        button(
+          shooed ? Icons.visibility : Icons.visibility_off_outlined,
+          shooed ? 'Call the cats back' : 'Shoo the cats away',
+          shooed,
+          onShoo,
+        ),
+      ],
     );
   }
 }
@@ -447,6 +536,18 @@ class _TextSettingsSheet extends StatelessWidget {
               ],
               selected: {settings.novelFont},
               onSelectionChanged: (v) => settings.setNovelFont(v.first),
+            ),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: Icon(Icons.pets, color: c.muted),
+              title: Text('Cats', style: TextStyle(color: c.text)),
+              subtitle: Text(
+                'Wander about behind the text. Tap one to scare it off.',
+                style: TextStyle(color: c.muted, fontSize: 13),
+              ),
+              value: settings.novelCats,
+              onChanged: settings.setNovelCats,
             ),
           ],
         ),

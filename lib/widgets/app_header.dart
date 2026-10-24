@@ -69,7 +69,13 @@ class _AppHeaderState extends State<AppHeader> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.auto_awesome, color: c.accent, size: 22),
+                      // Gold into the icon's purple.
+                      ShaderMask(
+                        blendMode: BlendMode.srcIn,
+                        shaderCallback: (bounds) =>
+                            c.goldViolet().createShader(bounds),
+                        child: const Icon(Icons.auto_awesome, size: 22),
+                      ),
                       const SizedBox(width: 10),
                       Text(
                         'Scry',

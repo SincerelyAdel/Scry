@@ -26,7 +26,7 @@ class TagSweepCard extends StatefulWidget {
   final VoidCallback? onTap;
   final EdgeInsetsGeometry padding;
 
-  /// Gold edge on an untagged card, e.g. when unread.
+  /// Gold-to-purple edge on an untagged card, e.g. when unread.
   final bool highlight;
 
   /// Softer colours, e.g. for read articles.
@@ -84,19 +84,33 @@ class _TagSweepCardState extends State<TagSweepCard>
       child: Padding(padding: widget.padding, child: widget.child),
     );
 
-    if (colors.isEmpty) {
+    if (colors.isEmpty && !widget.highlight) {
       return Material(
         color: c.surface,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radius),
-          side: BorderSide(
-            color: widget.highlight
-                ? c.accent.withValues(alpha: 0.55)
-                : c.border,
-          ),
+          side: BorderSide(color: c.border),
         ),
         clipBehavior: Clip.antiAlias,
         child: content,
+      );
+    }
+    if (colors.isEmpty) {
+      // Highlighted: an edge from gold into the icon's purple.
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          gradient: c.goldViolet(alpha: 0.55),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(1),
+          child: Material(
+            color: c.surface,
+            borderRadius: BorderRadius.circular(radius - 1),
+            clipBehavior: Clip.antiAlias,
+            child: content,
+          ),
+        ),
       );
     }
 

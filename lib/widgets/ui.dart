@@ -22,25 +22,22 @@ class AppCard extends StatelessWidget {
   final VoidCallback? onLongPress;
   final EdgeInsetsGeometry padding;
 
-  /// Gold edge, e.g. for unread articles.
+  /// A gold-to-purple edge, e.g. for unread articles.
   final bool highlight;
 
-  /// A full gold edge with a soft glow around it, for something that
-  /// should catch the eye, e.g. a novel with new chapters.
+  /// A full gold-to-purple edge with a soft glow around it, for something
+  /// that should catch the eye, e.g. a novel with new chapters.
   final bool glow;
 
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
+    final edge = glow || highlight;
     final card = Material(
       color: c.surface,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: glow
-            ? BorderSide(color: c.accent, width: 1.5)
-            : BorderSide(
-                color: highlight ? c.accent.withValues(alpha: 0.55) : c.border,
-              ),
+        borderRadius: BorderRadius.circular(edge ? 16 - (glow ? 1.5 : 1) : 16),
+        side: edge ? BorderSide.none : BorderSide(color: c.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
@@ -49,19 +46,28 @@ class AppCard extends StatelessWidget {
         child: Padding(padding: padding, child: child),
       ),
     );
-    if (!glow) return card;
+    if (!edge) return card;
+    // The edge runs from gold into the icon's purple.
     return DecoratedBox(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
+        gradient: c.goldViolet(alpha: glow ? 1 : 0.55),
         boxShadow: [
-          BoxShadow(
-            color: c.accent.withValues(alpha: 0.35),
-            blurRadius: 18,
-            spreadRadius: 1,
-          ),
+          if (glow) ...[
+            BoxShadow(
+              color: c.accent.withValues(alpha: 0.3),
+              blurRadius: 18,
+              offset: const Offset(-4, -2),
+            ),
+            BoxShadow(
+              color: c.violet.withValues(alpha: 0.3),
+              blurRadius: 18,
+              offset: const Offset(4, 2),
+            ),
+          ],
         ],
       ),
-      child: card,
+      child: Padding(padding: EdgeInsets.all(glow ? 1.5 : 1), child: card),
     );
   }
 }

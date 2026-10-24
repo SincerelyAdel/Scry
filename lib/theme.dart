@@ -21,6 +21,8 @@ class AppPalette extends ThemeExtension<AppPalette> {
     required this.onButton,
     required this.success,
     required this.danger,
+    required this.violet,
+    required this.violetLight,
   });
 
   final bool isDark;
@@ -38,6 +40,26 @@ class AppPalette extends ThemeExtension<AppPalette> {
   final Color button, onButton;
 
   final Color success, danger;
+
+  /// The purple from the app icon, mixed into the gold glows and edges.
+  final Color violet, violetLight;
+
+  /// Gold running into the icon's purple, for edges and glows.
+  LinearGradient goldViolet({
+    double alpha = 1,
+    AlignmentGeometry begin = Alignment.topLeft,
+    AlignmentGeometry end = Alignment.bottomRight,
+  }) => LinearGradient(
+    begin: begin,
+    end: end,
+    colors: [
+      accentLight.withValues(alpha: alpha),
+      accent.withValues(alpha: alpha),
+      violet.withValues(alpha: alpha),
+      violetLight.withValues(alpha: alpha),
+    ],
+    stops: const [0, 0.35, 0.75, 1],
+  );
 
   @override
   AppPalette copyWith() => this;
@@ -63,6 +85,8 @@ const darkPalette = AppPalette(
   onButton: Color(0xFF1A1508),
   success: Color(0xFF5FAE72),
   danger: Color(0xFFE5675A),
+  violet: Color(0xFF8A5CD6),
+  violetLight: Color(0xFF9B6BDF),
 );
 
 const lightPalette = AppPalette(
@@ -81,6 +105,8 @@ const lightPalette = AppPalette(
   onButton: Color(0xFF1F1E1D),
   success: Color(0xFF3F7D4E),
   danger: Color(0xFFB8432F),
+  violet: Color(0xFF6A3FB5),
+  violetLight: Color(0xFF7B4FC9),
 );
 
 /// Serif headings (Android maps 'serif' to Noto Serif).
@@ -104,6 +130,8 @@ ThemeData buildAppTheme(AppPalette c) {
         onPrimaryContainer: c.accent,
         secondary: c.accentLight,
         onSecondary: c.onAccent,
+        tertiary: c.violet,
+        onTertiary: Colors.white,
         secondaryContainer: c.surfaceAlt,
         onSecondaryContainer: c.text,
         surface: c.bg,
