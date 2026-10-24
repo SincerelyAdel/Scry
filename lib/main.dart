@@ -16,7 +16,7 @@ import 'state/settings_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Full screen, like RepoViewer: swiping in from an edge shows the system
+  // Full screen, like Tome: swiping in from an edge shows the system
   // bars for a moment, then they hide again.
   unawaited(SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky));
 

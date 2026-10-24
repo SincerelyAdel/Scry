@@ -1,4 +1,4 @@
-"""Draws the Scry icon on white: an unfinished circle built from many
+"""Draws the Scry icon (three stars) on white: an unfinished circle built from many
 separate gold and purple brush strokes with splatter, and sparkles painted
 as strokes too."""
 import math
@@ -27,8 +27,8 @@ def poly_stroke(center, widths, color, opacity=1.0):
         nx, ny = -dy / L, dx / L
         w = widths[i] / 2
         # Ragged edges: each side jitters on its own.
-        wl = w * random.uniform(0.85, 1.12)
-        wr = w * random.uniform(0.85, 1.12)
+        wl = w * random.uniform(0.62, 1.38) * (0.35 if random.random() < 0.06 else 1)
+        wr = w * random.uniform(0.62, 1.38) * (0.35 if random.random() < 0.06 else 1)
         left.append((x + nx * wl, y + ny * wl))
         right.append((x - nx * wr, y - ny * wr))
     pts = left + right[::-1]
@@ -63,9 +63,9 @@ def arc_stroke(color, r, start, sweep, peak, n=160, dry=True, opacity=1.0,
     poly_stroke(pts, ws, color, opacity)
     if dry:
         # Bristle gaps: white hairlines through the drying tail.
-        for _ in range(random.randint(2, 5)):
-            off = random.uniform(-0.35, 0.35)
-            b = random.uniform(0.4, 0.75)
+        for _ in range(random.randint(3, 7)):
+            off = random.uniform(-0.42, 0.42)
+            b = random.uniform(0.15, 0.7)
             e = random.uniform(b + 0.15, 1.0)
             seg = []
             for i in range(int(n * b), int(n * e)):
@@ -76,13 +76,13 @@ def arc_stroke(color, r, start, sweep, peak, n=160, dry=True, opacity=1.0,
             if len(seg) > 2:
                 d = 'M' + ' L'.join(f'{x:.1f} {y:.1f}' for x, y in seg)
                 out.append(f'<path d="{d}" fill="none" stroke="#fff" '
-                           f'stroke-width="{random.uniform(1.5, 4.5):.1f}" stroke-linecap="round" '
+                           f'stroke-width="{random.uniform(1.5, 5):.1f}" stroke-linecap="round" '
                            f'opacity="{random.uniform(0.5, 0.95):.2f}"/>')
     if not splash:
         return
     # Where the brush lands, it throws paint; where it lifts, it flicks.
     a0 = start
-    splat(CX + r * math.cos(a0), CY + r * math.sin(a0), color, peak * 1.4, random.randint(5, 12), 3, 11)
+    splat(CX + r * math.cos(a0), CY + r * math.sin(a0), color, peak * 1.4, random.randint(10, 20), 3, 15)
     a1 = start + sweep
     tang = a1 + math.copysign(math.pi / 2, sweep)
     flick(CX + r * math.cos(a1), CY + r * math.sin(a1), tang, color, peak)
@@ -99,10 +99,10 @@ def splat(x, y, color, spread, count, rmin, rmax):
 
 def flick(x, y, ang, color, peak):
     """Droplets thrown off the end of a stroke, in the direction it moved."""
-    for _ in range(random.randint(3, 7)):
-        a = ang + random.uniform(-0.45, 0.45)
-        d = random.uniform(20, 90)
-        L = random.uniform(8, 26)
+    for _ in range(random.randint(5, 11)):
+        a = ang + random.uniform(-0.5, 0.5)
+        d = random.uniform(20, 140)
+        L = random.uniform(10, 40)
         w = random.uniform(3, 9)
         px, py = x + d * math.cos(a), y + d * math.sin(a)
         rot = math.degrees(a)
@@ -186,41 +186,44 @@ GAP_END = math.radians(-105)     # ...and stop short of here.
 total = (2 * math.pi) - (GAP_START - GAP_END)
 
 strokes = []
-for i in range(9):   # big gold sweeps
+for i in range(12):  # big gold sweeps
     s = GAP_START + random.uniform(0, total * 0.55)
     sw = random.uniform(0.25, 0.6) * total
     sw = min(sw, GAP_START + total - s)
-    strokes.append((random.choice(GOLDS), R + random.uniform(-30, 30), s, sw, random.uniform(24, 62)))
-for i in range(8):   # purple sweeps, weighted toward the far end of the ring
+    strokes.append((random.choice(GOLDS), R + random.uniform(-30, 30), s, sw, random.uniform(30, 80)))
+for i in range(11):  # purple sweeps, weighted toward the far end of the ring
     s = GAP_START + random.uniform(total * 0.3, total * 0.8)
     sw = random.uniform(0.15, 0.4) * total
     sw = min(sw, GAP_START + total - s)
-    strokes.append((random.choice(PURPLES), R + random.uniform(-34, 34), s, sw, random.uniform(16, 46)))
-for i in range(10):  # thin fast strokes on top, both colours
+    strokes.append((random.choice(PURPLES), R + random.uniform(-34, 34), s, sw, random.uniform(22, 60)))
+for i in range(18):  # thin fast strokes on top, both colours
     s = GAP_START + random.uniform(0, total * 0.85)
     sw = random.uniform(0.1, 0.3) * total
     sw = min(sw, GAP_START + total - s)
-    strokes.append((random.choice(GOLDS + PURPLES), R + random.uniform(-48, 48), s, sw, random.uniform(5, 14)))
+    strokes.append((random.choice(GOLDS + PURPLES), R + random.uniform(-70, 70), s, sw, random.uniform(5, 14)))
 random.shuffle(strokes)
 for c, r, s, sw, peak in strokes:
     arc_stroke(c, r, s, sw, peak, dry=peak > 14, opacity=random.uniform(0.82, 1))
 
 # Drips off the bottom and loose splatter around the ring.
-for _ in range(3):
+for _ in range(5):
     drip(random.choice(GOLDS + PURPLES), math.radians(random.uniform(60, 120)),
          R + random.uniform(10, 30), random.uniform(40, 95))
-for _ in range(60):
+for _ in range(130):
     a = random.uniform(0, 2 * math.pi)
-    rr = R + random.gauss(0, 70)
+    rr = R + random.gauss(0, 90)
     out.append(f'<circle cx="{CX + rr * math.cos(a):.1f}" cy="{CY + rr * math.sin(a):.1f}" '
-               f'r="{random.uniform(1.5, 8):.1f}" fill="{random.choice(GOLDS + PURPLES)}" '
+               f'r="{random.uniform(1.5, 12):.1f}" fill="{random.choice(GOLDS + PURPLES)}" '
                f'opacity="{random.uniform(0.6, 1):.2f}"/>')
 
 # Sparkles, painted.
+STAR_AT = len(out)
 star_strokes(500, 478, 112, GOLDS)
-star_strokes(616, 368, 42, PURPLES)
+star_strokes(618, 362, 54, PURPLES)
+star_strokes(384, 340, 44, GOLDS)
 
-body = '\n  '.join(out)
+body = '\n  '.join(out[:STAR_AT])
+stars = '\n  '.join(out[STAR_AT:])
 svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <radialGradient id="mist" cx="50%" cy="50%" r="50%">
@@ -229,8 +232,12 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" vie
       <stop offset="1" stop-color="#9b6bdf" stop-opacity="0"/>
     </radialGradient>
     <filter id="rough" x="-10%" y="-10%" width="120%" height="120%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.07" numOctaves="2" seed="{SEED}"/>
-      <feDisplacementMap in="SourceGraphic" scale="6"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.09" numOctaves="3" seed="{SEED}"/>
+      <feDisplacementMap in="SourceGraphic" scale="11"/>
+    </filter>
+    <filter id="roughstar" x="-10%" y="-10%" width="120%" height="120%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="{SEED}"/>
+      <feDisplacementMap in="SourceGraphic" scale="5"/>
     </filter>
     <clipPath id="tile"><rect x="32" y="32" width="960" height="960" rx="200"/></clipPath>
   </defs>
@@ -239,6 +246,9 @@ svg = f'''<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" vie
   <circle cx="{CX}" cy="{CY}" r="{R - 10}" fill="url(#mist)"/>
   <g filter="url(#rough)">
   {body}
+  </g>
+  <g filter="url(#roughstar)">
+  {stars}
   </g>
   </g>
 </svg>

@@ -27,7 +27,7 @@ class SettingsProvider extends ChangeNotifier {
     : _themeMode = _enumOr(
         ThemeMode.values,
         _prefs.getString(_kThemeMode),
-        // Dark gold by default, like RepoViewer.
+        // Dark gold by default, like Tome.
         ThemeMode.dark,
       ),
       _fontSize = (_prefs.getDouble(_kFontSize) ?? defaultFontSize).clamp(

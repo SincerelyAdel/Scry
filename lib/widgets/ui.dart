@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/topic.dart';
 import '../theme.dart';
 
-/// A RepoViewer-style card: surface fill, hairline border, rounded corners.
+/// A Tome-style card: surface fill, hairline border, rounded corners.
 class AppCard extends StatelessWidget {
   const AppCard({
     super.key,

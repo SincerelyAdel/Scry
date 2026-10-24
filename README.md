@@ -1,7 +1,7 @@
 # Scry
 
 A calm, offline-first RSS/Atom reader for Android and iOS, built with Flutter.
-It shares its look with its sibling app, RepoViewer: near-black and gold (or
+It shares its look with its sibling app, Tome: near-black and gold (or
 warm cream in light mode), serif headings, rounded cards and a soft gold glow
 around the screen edge.
 Subscribe to tech blogs and paper feeds, read everything in one inbox, and
@@ -162,7 +162,7 @@ so neither is listed.
 
 This repo doesn't build APKs itself. They come from
 [SincerelyAdel/apk-builder](https://github.com/SincerelyAdel/apk-builder):
-in RepoViewer, open **APKs → Build APK**, pick `SincerelyAdel/Scry`, and leave
+in Tome, open **APKs → Build APK**, pick `SincerelyAdel/Scry`, and leave
 the branch blank to build `main`. Choose **GitHub** as the runner: Scry needs a
 recent Flutter stable, which the GitHub runner installs. The APK is published
 as a release on apk-builder and signed with the same key as every other build,
