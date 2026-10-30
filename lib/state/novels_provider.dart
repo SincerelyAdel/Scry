@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/novel_repository.dart';
 import '../models/novel.dart';
+import '../models/passage.dart';
 import '../services/chapter_alerts.dart';
 import '../services/chapter_matcher.dart';
 import '../services/epub.dart';
@@ -27,12 +28,32 @@ class NovelsProvider extends ChangeNotifier {
   HumanCheckRequired? _humanCheck;
 
   List<Novel> get novels => _novels;
+
+  List<Passage> _passages = const [];
+
+  /// Passages saved while reading, newest first.
+  List<Passage> get passages => _passages;
   bool get loaded => _loaded;
 
   /// True while new chapters are being looked for.
   bool get checking => _checking;
 
   NovelRepository get repository => _repo;
+
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  /// Work that finishes after the app has closed (a reader saving its
+  /// place as it goes) has no one left to tell.
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
 
   /// Set when ranobes.net showed its human check during the last check
   /// for new chapters; the library offers to pass it.
@@ -48,6 +69,7 @@ class NovelsProvider extends ChangeNotifier {
   Future<void> load() async {
     final first = !_loaded;
     _novels = _ordered(await _repo.listNovels());
+    _passages = await _repo.listPassages();
     _loaded = true;
     notifyListeners();
     if (first) {
@@ -143,6 +165,31 @@ class NovelsProvider extends ChangeNotifier {
   bool contains(String url) {
     final id = Ranobes.bookId(url);
     return id != null && _novels.any((n) => n.bookId == id);
+  }
+
+  /// Saves a passage; it goes to the top of the list.
+  Future<Passage> savePassage(Passage passage) async {
+    final saved = await _repo.savePassage(passage);
+    _passages = [saved, ..._passages];
+    notifyListeners();
+    return saved;
+  }
+
+  Future<void> removePassage(Passage passage) async {
+    await _repo.deletePassage(passage.id!);
+    _passages = [
+      for (final p in _passages)
+        if (p.id != passage.id) p,
+    ];
+    notifyListeners();
+  }
+
+  /// Puts back a passage removed by mistake.
+  Future<void> restorePassage(Passage passage) async {
+    final saved = await _repo.savePassage(passage);
+    _passages = [..._passages, saved]
+      ..sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    notifyListeners();
   }
 
   Novel? byId(int? id) => _novels.where((n) => n.id == id).firstOrNull;

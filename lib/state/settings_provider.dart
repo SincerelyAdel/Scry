@@ -21,6 +21,18 @@ enum AppMode { feeds, novels }
 /// Novel text: serif or sans.
 enum NovelFont { serif, sans }
 
+/// How quickly a living word grows to full strength.
+enum LivingSpeed {
+  slow('Slow', 40),
+  normal('Normal', 18),
+  fast('Fast', 6);
+
+  const LivingSpeed(this.label, this.seconds);
+
+  final String label;
+  final double seconds;
+}
+
 /// User preferences, persisted with shared_preferences.
 class SettingsProvider extends ChangeNotifier {
   SettingsProvider(this._prefs)
@@ -59,7 +71,14 @@ class SettingsProvider extends ChangeNotifier {
         NovelFont.serif,
       ),
       _chapterAlerts = _prefs.getBool(_kChapterAlerts) ?? true,
-      _novelCats = _prefs.getBool(_kNovelCats) ?? false;
+      _novelCats = _prefs.getBool(_kNovelCats) ?? false,
+      _livingWords = _prefs.getBool(_kLivingWords) ?? false,
+      _livingMood = _prefs.getBool(_kLivingMood) ?? true,
+      _livingSpeed = _enumOr(
+        LivingSpeed.values,
+        _prefs.getString(_kLivingSpeed),
+        LivingSpeed.normal,
+      );
 
   final SharedPreferences _prefs;
 
@@ -73,6 +92,9 @@ class SettingsProvider extends ChangeNotifier {
   static const _kNovelFont = 'novelFont';
   static const _kChapterAlerts = 'chapterAlerts';
   static const _kNovelCats = 'novelCats';
+  static const _kLivingWords = 'livingWords';
+  static const _kLivingMood = 'livingMood';
+  static const _kLivingSpeed = 'livingSpeed';
 
   static const minNovelFontSize = 14.0;
   static const maxNovelFontSize = 32.0;
@@ -91,6 +113,38 @@ class SettingsProvider extends ChangeNotifier {
   NovelFont _novelFont;
   bool _chapterAlerts;
   bool _novelCats;
+  bool _livingWords;
+  bool _livingMood;
+  LivingSpeed _livingSpeed;
+
+  /// Words like "fire" and "venom" come alive in a chapter's text.
+  bool get livingWords => _livingWords;
+
+  Future<void> setLivingWords(bool on) async {
+    if (on == _livingWords) return;
+    _livingWords = on;
+    notifyListeners();
+    await _prefs.setBool(_kLivingWords, on);
+  }
+
+  /// The whole page takes on a living word's mood.
+  bool get livingMood => _livingMood;
+
+  Future<void> setLivingMood(bool on) async {
+    if (on == _livingMood) return;
+    _livingMood = on;
+    notifyListeners();
+    await _prefs.setBool(_kLivingMood, on);
+  }
+
+  LivingSpeed get livingSpeed => _livingSpeed;
+
+  Future<void> setLivingSpeed(LivingSpeed speed) async {
+    if (speed == _livingSpeed) return;
+    _livingSpeed = speed;
+    notifyListeners();
+    await _prefs.setString(_kLivingSpeed, speed.name);
+  }
 
   /// Cats wandering about behind a chapter's text.
   bool get novelCats => _novelCats;

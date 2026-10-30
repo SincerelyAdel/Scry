@@ -13,6 +13,7 @@ import 'chapter_reader_screen.dart';
 import 'human_check_screen.dart';
 import 'novel_cover.dart';
 import 'novel_screen.dart';
+import 'passages_drawer.dart';
 
 /// The novels side: your novels, most recently read first, each with where
 /// you are and how many chapters are left.
@@ -143,49 +144,59 @@ class _LibraryScreenState extends State<LibraryScreen> {
       );
     }
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Novels'),
-        actions: [
-          if (BookPicker.supported)
-            IconButton(
-              tooltip: 'Import EPUB',
-              icon: const Icon(Icons.file_open_outlined),
-              onPressed: _importing ? null : _import,
+    // Saved passages sit behind the library, on the left.
+    return PassagesDrawer(
+      child: Scaffold(
+        appBar: AppBar(
+          leading: Builder(
+            builder: (context) => IconButton(
+              tooltip: 'Saved passages',
+              icon: const Icon(Icons.bookmarks_outlined),
+              onPressed: () => PassagesDrawer.open(context),
             ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(2),
-          child: SizedBox(
-            height: 2,
-            child: novels.checking || _importing
-                ? const LinearProgressIndicator(minHeight: 2)
-                : null,
+          ),
+          title: const Text('Novels'),
+          actions: [
+            if (BookPicker.supported)
+              IconButton(
+                tooltip: 'Import EPUB',
+                icon: const Icon(Icons.file_open_outlined),
+                onPressed: _importing ? null : _import,
+              ),
+          ],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(2),
+            child: SizedBox(
+              height: 2,
+              child: novels.checking || _importing
+                  ? const LinearProgressIndicator(minHeight: 2)
+                  : null,
+            ),
           ),
         ),
+        body: novels.humanCheck == null
+            ? body
+            : Column(
+                children: [
+                  _HumanCheckBanner(
+                    onVerify: () async {
+                      final check = novels.humanCheck!;
+                      if (await passHumanCheck(context, check.url)) {
+                        novels.checkAll();
+                      }
+                    },
+                  ),
+                  Expanded(child: body),
+                ],
+              ),
+        floatingActionButton: novels.novels.isEmpty
+            ? null
+            : FloatingActionButton.extended(
+                onPressed: _add,
+                icon: const Icon(Icons.add),
+                label: const Text('Add novel'),
+              ),
       ),
-      body: novels.humanCheck == null
-          ? body
-          : Column(
-              children: [
-                _HumanCheckBanner(
-                  onVerify: () async {
-                    final check = novels.humanCheck!;
-                    if (await passHumanCheck(context, check.url)) {
-                      novels.checkAll();
-                    }
-                  },
-                ),
-                Expanded(child: body),
-              ],
-            ),
-      floatingActionButton: novels.novels.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _add,
-              icon: const Icon(Icons.add),
-              label: const Text('Add novel'),
-            ),
     );
   }
 }
@@ -314,7 +325,8 @@ class NovelCard extends StatelessWidget {
 }
 
 /// Opens the reader where [novel] was left, or at its first chapter, or at
-/// chapter [url] (number [number]) when given.
+/// chapter [url] (number [number]) when given. [focus] is a saved
+/// passage's first and last paragraph, to show there.
 ///
 /// The reader always sits on the novel's page, which pinching out of it
 /// goes back to; [fromNovelPage] says it's open already.
@@ -324,6 +336,7 @@ Future<void> openReader(
   String? url,
   int? number,
   bool fromNovelPage = false,
+  (int, int)? focus,
 }) {
   // Its new chapters are being read; the notification has done its job.
   ChapterAlerts.dismiss(novel);
@@ -339,6 +352,7 @@ Future<void> openReader(
         novelId: novel.id!,
         url: url ?? novel.chapterUrl,
         number: number ?? (url == null ? novel.chapterNumber : 0),
+        focus: focus,
       ),
     ),
   );

@@ -343,6 +343,7 @@ void main() {
       await raw.execute('ALTER TABLE chapters DROP COLUMN keep');
       await raw.execute('DROP TABLE chapter_index');
       await raw.execute('DROP TABLE downloads');
+      await raw.execute('DROP TABLE passages');
       await raw.setVersion(6);
       await raw.close();
 

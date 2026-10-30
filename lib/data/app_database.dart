@@ -6,6 +6,7 @@ import '../models/article_sort.dart';
 import '../models/feed.dart';
 import '../models/novel.dart';
 import '../models/paper_figure.dart';
+import '../models/passage.dart';
 import '../models/topic.dart';
 import '../utils/arxiv.dart';
 import '../utils/html_text.dart';
@@ -22,7 +23,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 13;
+  static const _version = 14;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -95,6 +96,7 @@ class AppDatabase {
     await _createNovelTables(db);
     await _addDownloadTables(db);
     await _addSiteUrls(db);
+    await _addPassages(db);
   }
 
   /// Added in version 7: the chapter count when the novel was last read,
@@ -201,6 +203,26 @@ class AppDatabase {
     if (from >= 4 && from < 11) await _backfillTags(db);
     if (from < 12) await _addDownloadTables(db);
     if (from < 13) await _addSiteUrls(db);
+    if (from < 14) await _addPassages(db);
+  }
+
+  /// Added in version 14: passages saved while reading, newest first in
+  /// the library's drawer. They go with their novel.
+  static Future<void> _addPassages(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE passages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        novelId INTEGER NOT NULL REFERENCES novels(id) ON DELETE CASCADE,
+        novelTitle TEXT NOT NULL,
+        chapterUrl TEXT NOT NULL,
+        chapterNumber INTEGER NOT NULL DEFAULT 0,
+        chapterTitle TEXT NOT NULL,
+        fromParagraph INTEGER NOT NULL,
+        toParagraph INTEGER NOT NULL,
+        body TEXT NOT NULL,
+        savedAt INTEGER NOT NULL
+      )
+    ''');
   }
 
   /// Added in version 13: chapters from an EPUB added to a ranobes.net
@@ -963,5 +985,20 @@ class AppDatabase {
       [novelId],
     );
     return rows.first['n'] as int;
+  }
+
+  // ------------------------------------------------------------ passages
+
+  /// Every saved passage, newest first.
+  Future<List<Passage>> listPassages() async {
+    final rows = await _db.query('passages', orderBy: 'savedAt DESC, id DESC');
+    return rows.map(Passage.fromMap).toList();
+  }
+
+  Future<int> insertPassage(Passage passage) =>
+      _db.insert('passages', passage.toMap());
+
+  Future<void> deletePassage(int id) async {
+    await _db.delete('passages', where: 'id = ?', whereArgs: [id]);
   }
 }

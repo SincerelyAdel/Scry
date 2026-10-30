@@ -4,6 +4,7 @@ import 'dart:isolate';
 import 'package:path/path.dart' as p;
 
 import '../models/novel.dart';
+import '../models/passage.dart';
 import '../services/chapter_matcher.dart';
 import '../services/epub.dart';
 import '../services/feed_fetcher.dart';
@@ -404,4 +405,11 @@ class NovelRepository {
       chapterCount: count,
     );
   }
+
+  Future<List<Passage>> listPassages() => _db.listPassages();
+
+  Future<Passage> savePassage(Passage passage) async =>
+      passage.copyWith(id: await _db.insertPassage(passage));
+
+  Future<void> deletePassage(int id) => _db.deletePassage(id);
 }

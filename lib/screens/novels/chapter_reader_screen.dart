@@ -2,20 +2,28 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../models/novel.dart';
+import '../../models/passage.dart';
 import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
 import '../../state/settings_provider.dart';
 import '../../theme.dart';
 import '../../widgets/cats/cat_layer.dart';
 import '../../widgets/cats/cat_menu.dart';
+import '../../widgets/living_words/lexicon.dart';
+import '../../widgets/living_words/living_controller.dart';
+import '../../widgets/living_words/living_menu.dart';
+import '../../widgets/living_words/living_text.dart';
+import '../../widgets/living_words/mood_layer.dart';
 import '../../widgets/page_gestures.dart';
 import '../../widgets/ui.dart';
 import 'human_check_screen.dart';
+import 'passage_selection.dart';
 
 /// Reads a novel chapter by chapter. Remembers how far down the chapter
 /// you are, keeps the screen on, and has the next chapter ready before you
@@ -26,6 +34,7 @@ class ChapterReaderScreen extends StatefulWidget {
     required this.novelId,
     this.url,
     this.number = 0,
+    this.focus,
   });
 
   final int novelId;
@@ -35,6 +44,10 @@ class ChapterReaderScreen extends StatefulWidget {
 
   /// Its position in the novel, or 0 when not known.
   final int number;
+
+  /// A saved passage's first and last paragraph: the reader scrolls to it
+  /// and lifts it off the page for a moment.
+  final (int, int)? focus;
 
   @override
   State<ChapterReaderScreen> createState() => _ChapterReaderScreenState();
@@ -56,6 +69,16 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   bool _catsResting = false;
   bool _catsShooed = false;
 
+  /// Living words: which one plays, and the chapter split into runs.
+  final _living = LivingWordsController();
+  List<List<LivingRun>>? _runs;
+  ChapterText? _runsFor;
+
+  /// Saving passages: the paragraphs held, and one just opened from the
+  /// saved passages, shown briefly.
+  final _passage = PassageSelectionController();
+  (int, int)? _pendingFocus;
+
   /// How far down the chapter, 0 to 1; drives the bar at the bottom.
   final _progress = ValueNotifier<double>(0);
   Timer? _saveTimer;
@@ -66,6 +89,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     _novels = context.read<NovelsProvider>();
     _novel = _novels.byId(widget.novelId)!;
     _scroll.addListener(_onScroll);
+    _pendingFocus = widget.focus;
     WakelockPlus.enable().ignore();
     _open(widget.url, widget.number, restore: true);
   }
@@ -77,6 +101,8 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     WakelockPlus.disable().ignore();
     _scroll.dispose();
     _progress.dispose();
+    _living.dispose();
+    _passage.dispose();
     super.dispose();
   }
 
@@ -96,6 +122,8 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
       final resume = restore && chapter.url == _novel.chapterUrl
           ? _novel.chapterProgress
           : 0.0;
+      _living.reset();
+      _passage.clear();
       setState(() {
         _chapter = chapter;
         _number = url == null ? 1 : number;
@@ -106,6 +134,10 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         if (!_scroll.hasClients) return;
         final max = _scroll.position.maxScrollExtent;
         _scroll.jumpTo(resume * max);
+        // Opened from a saved passage: go to it once laid out.
+        final focus = _pendingFocus;
+        _pendingFocus = null;
+        if (focus != null) _passage.reveal(focus.$1, focus.$2);
       });
       await _save(progress: resume);
       final next = chapter.nextUrl;
@@ -150,6 +182,53 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     if (url != null) _open(url, _number > 1 ? _number - 1 : 0);
   }
 
+  String _textOf(int from, int to) =>
+      _chapter!.paragraphs.sublist(from, to + 1).join('\n\n');
+
+  /// Saves the held paragraphs as a passage.
+  Future<void> _savePassage(int from, int to) async {
+    final chapter = _chapter;
+    if (chapter == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final passage = await _novels.savePassage(
+      Passage(
+        novelId: _novel.id!,
+        novelTitle: _novel.title,
+        chapterUrl: chapter.url,
+        chapterNumber: _number,
+        chapterTitle: chapter.title,
+        from: from,
+        to: to,
+        text: _textOf(from, to),
+        savedAt: DateTime.now(),
+      ),
+    );
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(
+            passage.paragraphCount == 1
+                ? 'Passage saved'
+                : 'Passage saved: ${passage.paragraphCount} paragraphs',
+          ),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => _novels.removePassage(passage),
+          ),
+        ),
+      );
+  }
+
+  Future<void> _copyPassage(int from, int to) async {
+    if (_chapter == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    await Clipboard.setData(ClipboardData(text: _textOf(from, to)));
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('Copied')));
+  }
+
   void _textSettings() {
     showModalBottomSheet<void>(
       context: context,
@@ -158,11 +237,37 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     );
   }
 
+  /// The chapter's paragraphs split into plain text and living words.
+  List<List<LivingRun>> _runsOf(ChapterText chapter) {
+    if (_runsFor != chapter || _runs == null) {
+      _runsFor = chapter;
+      _runs = [for (final p in chapter.paragraphs) Lexicon.instance.split(p)];
+    }
+    return _runs!;
+  }
+
+  /// Keeps the controller in step with the settings. Turning it off stops
+  /// a playing word, which rebuilds widgets, so that waits for the frame.
+  void _syncLiving(SettingsProvider settings) {
+    _living
+      ..speed = settings.livingSpeed
+      ..screen = MediaQuery.sizeOf(context)
+      ..still = MediaQuery.disableAnimationsOf(context);
+    if (_living.enabled != settings.livingWords) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _living.enabled = context.read<SettingsProvider>().livingWords;
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.palette;
     final settings = context.watch<SettingsProvider>();
     final chapter = _chapter;
+    _syncLiving(settings);
     // The column below already limits the width, so a plain margin.
     const pad = 20.0;
 
@@ -204,9 +309,12 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
             // Full reading width, not just as wide as the first line.
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(pad, 12, pad, 48),
-              child: SelectionArea(
-                child: SwipeNavArea(
+              padding: const EdgeInsets.fromLTRB(0, 12, 0, 48),
+              child: SwipeNavArea(
+                child: PassageSelection(
+                  controller: _passage,
+                  scroll: _scroll,
+                  gutter: pad,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -228,12 +336,22 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                         ),
                       ),
                       SizedBox(height: settings.novelFontSize * 1.4),
-                      for (final paragraph in chapter.paragraphs)
+                      for (final (i, paragraph) in chapter.paragraphs.indexed)
                         Padding(
                           padding: EdgeInsets.only(
                             bottom: settings.novelFontSize * 0.9,
                           ),
-                          child: Text(paragraph, style: textStyle),
+                          child: PassageParagraph(
+                            controller: _passage,
+                            index: i,
+                            child: settings.livingWords
+                                ? LivingParagraph(
+                                    id: i,
+                                    runs: _runsOf(chapter)[i],
+                                    style: textStyle,
+                                  )
+                                : Text(paragraph, style: textStyle),
+                          ),
                         ),
                       const SizedBox(height: 24),
                       _ChapterNav(
@@ -254,65 +372,104 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     }
 
     final canMove = chapter != null && !_loading;
-    return Scaffold(
-      body: SwipeNav(
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    return ListenableBuilder(
+      listenable: _passage,
+      builder: (context, page) => TweenAnimationBuilder<Color?>(
+        tween: ColorTween(
+          end: _passage.selection == null
+              ? c.bg
+              : dark
+              ? Colors.black
+              : Color.lerp(c.bg, Colors.black, 0.07),
+        ),
+        duration: const Duration(milliseconds: 450),
+        builder: (context, bg, _) => Scaffold(backgroundColor: bg, body: page),
+      ),
+      child: SwipeNav(
         onNext: canMove && chapter.nextUrl != null ? _next : null,
         onPrevious: canMove && chapter.prevUrl != null ? _previous : null,
         nextLabel: 'Next chapter',
         previousLabel: 'Previous chapter',
-        child: CatLayer(
-          enabled: settings.novelCats,
-          resting: _catsResting,
-          shooed: _catsShooed,
-          // Over the page now, so at full strength; they keep to the
-          // margins beside the text (the column is at most 760 wide).
-          textWidth: math.min(MediaQuery.sizeOf(context).width, 760) - 24,
+        // While a living word plays, the cats step out of its way.
+        child: ValueListenableBuilder<LivingEffect?>(
+          valueListenable: _living.effect,
+          builder: (context, playing, page) => CatLayer(
+            enabled: settings.novelCats,
+            resting: _catsResting,
+            shooed: _catsShooed || playing != null,
+            // Over the page now, so at full strength; they keep to the
+            // margins beside the text (the column is at most 760 wide).
+            textWidth: math.min(MediaQuery.sizeOf(context).width, 760) - 24,
+            child: page!,
+          ),
           child: Stack(
             children: [
-              CustomScrollView(
-                controller: _scroll,
-                slivers: [
-                  SliverAppBar(
-                    floating: true,
-                    snap: true,
-                    title: Text(
-                      chapter?.title ?? _novel.title,
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    actions: [
-                      CatMenuButton(
-                        on: settings.novelCats,
-                        resting: _catsResting,
-                        shooed: _catsShooed,
-                        onChanged: settings.setNovelCats,
-                        onRest: (v) => setState(() => _catsResting = v),
-                        onShoo: (v) => setState(() => _catsShooed = v),
+              LivingWordsScope(
+                controller: _living,
+                child: CustomScrollView(
+                  controller: _scroll,
+                  slivers: [
+                    SliverAppBar(
+                      floating: true,
+                      snap: true,
+                      title: Text(
+                        chapter?.title ?? _novel.title,
+                        style: const TextStyle(fontSize: 16),
                       ),
-                      IconButton(
-                        tooltip: 'Text',
-                        icon: const Icon(Icons.text_fields),
-                        onPressed: _textSettings,
-                      ),
-                      IconButton(
-                        tooltip: 'Chapters',
-                        icon: const Icon(Icons.format_list_numbered),
-                        // The novel's page is always under the reader.
-                        onPressed: () => Navigator.of(context).maybePop(),
-                      ),
-                      if (chapter != null && chapter.url.startsWith('http'))
-                        IconButton(
-                          tooltip: 'Open on ranobes.net',
-                          icon: const Icon(Icons.open_in_browser),
-                          onPressed: () => launchUrl(
-                            Uri.parse(chapter.url),
-                            mode: LaunchMode.externalApplication,
-                          ),
+                      actions: [
+                        LivingWordsMenuButton(
+                          on: settings.livingWords,
+                          mood: settings.livingMood,
+                          speed: settings.livingSpeed,
+                          playing: _living.effect,
+                          onChanged: settings.setLivingWords,
+                          onMood: settings.setLivingMood,
+                          onSpeed: settings.setLivingSpeed,
                         ),
-                    ],
-                  ),
-                  content,
-                ],
+                        CatMenuButton(
+                          on: settings.novelCats,
+                          resting: _catsResting,
+                          shooed: _catsShooed,
+                          onChanged: settings.setNovelCats,
+                          onRest: (v) => setState(() => _catsResting = v),
+                          onShoo: (v) => setState(() => _catsShooed = v),
+                        ),
+                        IconButton(
+                          tooltip: 'Text',
+                          icon: const Icon(Icons.text_fields),
+                          onPressed: _textSettings,
+                        ),
+                        IconButton(
+                          tooltip: 'Chapters',
+                          icon: const Icon(Icons.format_list_numbered),
+                          // The novel's page is always under the reader.
+                          onPressed: () => Navigator.of(context).maybePop(),
+                        ),
+                        if (chapter != null && chapter.url.startsWith('http'))
+                          IconButton(
+                            tooltip: 'Open on ranobes.net',
+                            icon: const Icon(Icons.open_in_browser),
+                            onPressed: () => launchUrl(
+                              Uri.parse(chapter.url),
+                              mode: LaunchMode.externalApplication,
+                            ),
+                          ),
+                      ],
+                    ),
+                    content,
+                  ],
+                ),
               ),
+              if (settings.livingWords && settings.livingMood)
+                Positioned.fill(
+                  child: LivingMoodLayer(
+                    controller: _living,
+                    ink: c.text,
+                    paper: c.bg,
+                    dark: Theme.of(context).brightness == Brightness.dark,
+                  ),
+                ),
               // Loading the next chapter over the current one.
               if (_loading && chapter != null)
                 const Positioned(
@@ -321,6 +478,19 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                   top: 0,
                   child: LinearProgressIndicator(minHeight: 2),
                 ),
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 16,
+                child: SafeArea(
+                  top: false,
+                  child: PassageToolbar(
+                    controller: _passage,
+                    onSave: _savePassage,
+                    onCopy: _copyPassage,
+                  ),
+                ),
+              ),
               Positioned(
                 left: 0,
                 right: 0,

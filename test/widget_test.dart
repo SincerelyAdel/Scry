@@ -395,6 +395,91 @@ void main() {
     expect(find.text('Inbox'), findsWidgets);
   });
 
+  testWidgets('novels: hold a paragraph, save it, find it in the drawer', (
+    tester,
+  ) async {
+    final novels = NovelRepository(db, fetcher);
+    await tester.runAsync(() async {
+      fetcher.responses
+        ..[novelUrl] = novelPage
+        ..[chapterListUrl] = chapterListPage(count: 3)
+        ..[chapter2Url] = chapterPage(
+          title: 'Chapter 2',
+          paragraphs: [
+            'The first paragraph of the chapter, to hold.',
+            'The second one, to stretch over.',
+            'A third, left alone.',
+          ],
+          prev: chapter1Url,
+          next: chapter3Url,
+        );
+      final novel = await novels.addNovel(novelUrl);
+      final second = await novels.chapter(novel, chapter2Url);
+      await novels.saveProgress(novel, chapter: second, number: 2, progress: 0);
+      fetcher.responses.clear();
+    });
+    await pumpApp(tester);
+    await tester.tap(find.text('Novels'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continue'));
+    await tester.pumpAndSettle();
+
+    // Hold a paragraph: it lifts, and the bar offers to save it.
+    await tester.longPress(
+      find.text('The first paragraph of the chapter, to hold.'),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Save passage'), findsOneWidget);
+    // Hold the lower handle, then drag down over the next paragraph.
+    final handle = find.bySemanticsLabel('Stretch the end');
+    final gesture = await tester.startGesture(tester.getCenter(handle));
+    await tester.pump(const Duration(milliseconds: 300));
+    await gesture.moveTo(
+      tester.getCenter(find.text('The second one, to stretch over.')),
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.text('Save 2 paragraphs'), findsOneWidget);
+    await tester.tap(find.text('Save 2 paragraphs'));
+    await tester.pumpAndSettle();
+    expect(find.text('Passage saved: 2 paragraphs'), findsWidgets);
+    expect(find.text('Save 2 paragraphs'), findsNothing);
+
+    // Back to the library; a swipe right opens the saved passages.
+    tester
+        .state<NavigatorState>(find.byType(Navigator).first)
+        .popUntil((r) => r.isFirst);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Saved passages'), findsNothing);
+    await tester.fling(find.text('Shadow Slave'), const Offset(300, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Saved passages'), findsOneWidget);
+    expect(find.text('2 paragraphs'), findsOneWidget);
+    expect(find.text('CHAPTER 2'), findsOneWidget);
+    // A swipe left closes them.
+    await tester.fling(find.text('CHAPTER 2'), const Offset(-300, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(find.text('CHAPTER 2'), findsNothing);
+
+    // The header button opens them too; a tap on the card goes back to it.
+    await tester.tap(find.byTooltip('Saved passages'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('CHAPTER 2'));
+    await tester.pumpAndSettle();
+    expect(find.text('The second one, to stretch over.'), findsOneWidget);
+    // Nothing is held: the bar stays out of sight.
+    final bar = tester.widget<AnimatedOpacity>(
+      find
+          .ancestor(
+            of: find.text('Save passage'),
+            matching: find.byType(AnimatedOpacity),
+          )
+          .first,
+    );
+    expect(bar.opacity, 0);
+  });
+
   testWidgets('starts dark; theme choice persists', (tester) async {
     await pumpApp(tester);
     expect(

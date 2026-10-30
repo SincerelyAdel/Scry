@@ -326,6 +326,7 @@ void main() {
       final raw = await databaseFactoryFfiNoIsolate.openDatabase(path);
       await raw.execute('ALTER TABLE articles DROP COLUMN starred');
       await raw.execute('DROP TABLE downloads');
+      await raw.execute('DROP TABLE passages');
       await raw.execute('DROP TABLE chapter_index');
       await raw.execute('DROP TABLE chapters');
       await raw.execute('DROP TABLE novels');
