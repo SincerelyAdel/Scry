@@ -124,10 +124,15 @@ class CatPainter extends CustomPainter {
       ..drawPath(p.tail, Paint()..color = b.tail)
       // Lighter along the top, darker at the edges, so it looks round.
       ..drawPath(p.tailSpine, stroke(b.light, p.tailWidth * 0.35, 0.18))
+      // Rings wrap the tail: kept inside its outline, so their ends don't
+      // stick out like spikes.
+      ..save()
+      ..clipPath(p.tail)
       ..drawPath(
         p.tailRings,
         soft(b.stripeColor, 2.4 * s, b.stripeOpacity * 0.85, 0.7 * s),
-      );
+      )
+      ..restore();
 
     // Body, then its coat inside the outline.
     canvas.drawPath(p.outline, Paint()..color = b.base);
@@ -194,21 +199,6 @@ class CatPainter extends CustomPainter {
     'M-6.2 -4.6 C-2.2 -3.6 .8 -3.9 3.6 -2.7 M-6.8 0 L3.4 0 '
     'M-6.2 4.6 C-2.2 3.6 .8 3.9 3.6 2.7 M-8 -2.3 L-3 -1.6 M-8 2.3 L-3 1.6 '
     'M4.2 -4.4 L6.8 -3.1 M4.2 4.4 L6.8 3.1',
-  );
-  static final _eyes = _svg(
-    // Open, rounded almonds rather than slits.
-    'M3.3 -6.5 Q5.8 -9.3 8.6 -6.4 Q5.9 -4.4 3.3 -6.5 Z '
-    'M3.3 6.5 Q5.8 9.3 8.6 6.4 Q5.9 4.4 3.3 6.5 Z',
-  );
-  static final _lidsPath = _svg(
-    'M3 -6.6 Q5.8 -9.6 8.9 -6.4 Q5.9 -4.1 3 -6.6 Z '
-    'M3 6.6 Q5.8 9.6 8.9 6.4 Q5.9 4.1 3 6.6 Z',
-  );
-  static final _brows = _svg(
-    'M3.1 -7.6 Q5.8 -9.9 8.9 -6.9 M3.1 7.6 Q5.8 9.9 8.9 6.9',
-  );
-  static final _nosePath = _svg(
-    'M12.1 -1.15 L13.5 0 L12.1 1.15 Q11.6 0 12.1 -1.15 Z',
   );
   static final _whiskers = _svg(
     'M10.6 -2.7 Q15 -4.6 21 -6.4 M10.9 -3.3 Q15 -6.6 19.6 -10.4 '
@@ -313,33 +303,15 @@ class CatPainter extends CustomPainter {
           stops: const [0, 0.55, 1],
         ).createShader(_headBox),
     );
+    // Seen straight from above: the crown, the ears and a hint of muzzle
+    // at the front; the eyes and nose are out of sight below.
     for (final y in [-2.0, 2.0]) {
       canvas.drawOval(
-        Rect.fromCenter(center: Offset(9.8, y), width: 5.2, height: 4.6),
-        fill(b.muzzle, 0.6),
+        Rect.fromCenter(center: Offset(10.6, y), width: 4, height: 3.6),
+        fill(b.muzzle, 0.35),
       );
     }
     canvas
-      ..drawPath(_eyes, fill(b.eye))
-      // Round pupils, a catchlight in each.
-      ..drawOval(
-        Rect.fromCenter(
-          center: const Offset(6, -6.75),
-          width: 1.9,
-          height: 2.2,
-        ),
-        fill(const Color(0xFF0A0A0A)),
-      )
-      ..drawOval(
-        Rect.fromCenter(center: const Offset(6, 6.75), width: 1.9, height: 2.2),
-        fill(const Color(0xFF0A0A0A)),
-      )
-      ..drawCircle(const Offset(6.55, -7.35), 0.45, fill(Colors.white, 0.9))
-      ..drawCircle(const Offset(6.55, 6.15), 0.45, fill(Colors.white, 0.9));
-    if (p.lids > 0.01) canvas.drawPath(_lidsPath, fill(b.base, p.lids));
-    canvas
-      ..drawPath(_brows, line(b.rim, 0.5, 0.3))
-      ..drawPath(_nosePath, fill(b.nose))
       ..drawPath(_whiskers, line(b.whisker, 0.32, 0.72))
       ..restore();
   }
