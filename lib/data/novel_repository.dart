@@ -412,4 +412,7 @@ class NovelRepository {
       passage.copyWith(id: await _db.insertPassage(passage));
 
   Future<void> deletePassage(int id) => _db.deletePassage(id);
+
+  Future<void> setPassageCharacter(int id, String? character) =>
+      _db.setPassageCharacter(id, character);
 }

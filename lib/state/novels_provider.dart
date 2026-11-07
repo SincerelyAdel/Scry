@@ -184,6 +184,20 @@ class NovelsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Names the character [passage] belongs to; blank clears it.
+  Future<void> setCharacter(Passage passage, String name) async {
+    final trimmed = name.trim();
+    await _repo.setPassageCharacter(
+      passage.id!,
+      trimmed.isEmpty ? null : trimmed,
+    );
+    _passages = [
+      for (final p in _passages)
+        p.id == passage.id ? p.copyWith(character: trimmed) : p,
+    ];
+    notifyListeners();
+  }
+
   /// Puts back a passage removed by mistake.
   Future<void> restorePassage(Passage passage) async {
     final saved = await _repo.savePassage(passage);

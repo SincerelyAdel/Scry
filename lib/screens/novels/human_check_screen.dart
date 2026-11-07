@@ -48,6 +48,8 @@ void showHumanCheckSnack(
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
+        // Leaves on its own, as one without a button would.
+        persist: false,
         duration: const Duration(seconds: 10),
         content: const Text("ranobes.net wants to check you're human"),
         action: SnackBarAction(

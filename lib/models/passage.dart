@@ -12,6 +12,7 @@ class Passage {
     required this.to,
     required this.text,
     required this.savedAt,
+    this.character,
   });
 
   final int? id;
@@ -31,6 +32,9 @@ class Passage {
   final String text;
   final DateTime savedAt;
 
+  /// Who speaks or is meant, typed by the reader; null when not given.
+  final String? character;
+
   int get paragraphCount => to - from + 1;
 
   List<String> get paragraphs => text.split('\n\n');
@@ -46,6 +50,7 @@ class Passage {
     'toParagraph': to,
     'body': text,
     'savedAt': savedAt.millisecondsSinceEpoch,
+    'character': character,
   };
 
   static Passage fromMap(Map<String, Object?> row) => Passage(
@@ -59,9 +64,11 @@ class Passage {
     to: row['toParagraph'] as int,
     text: row['body'] as String,
     savedAt: DateTime.fromMillisecondsSinceEpoch(row['savedAt'] as int),
+    character: row['character'] as String?,
   );
 
-  Passage copyWith({int? id}) => Passage(
+  /// A copy; [character] '' clears the name.
+  Passage copyWith({int? id, String? character}) => Passage(
     id: id ?? this.id,
     novelId: novelId,
     novelTitle: novelTitle,
@@ -72,5 +79,8 @@ class Passage {
     to: to,
     text: text,
     savedAt: savedAt,
+    character: character == null
+        ? this.character
+        : (character.isEmpty ? null : character),
   );
 }

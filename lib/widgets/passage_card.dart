@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 
 import '../models/passage.dart';
@@ -5,18 +7,23 @@ import '../theme.dart';
 
 /// A saved passage: the novel, the chapter's number and title, and the
 /// passage itself under a large faint opening quote. A long passage scrolls
-/// inside the card. A gold ribbon hangs from the top edge, as in a book.
+/// inside the card. A gold ribbon hangs from the top edge, as in a book,
+/// and the character it belongs to, typed by the reader, sits bottom right.
 class PassageCard extends StatelessWidget {
   const PassageCard({
     super.key,
     required this.passage,
     required this.onTap,
     this.onLongPress,
+    this.onCharacter,
   });
 
   final Passage passage;
   final VoidCallback onTap;
   final VoidCallback? onLongPress;
+
+  /// Asks for the character's name; without it the name only shows.
+  final VoidCallback? onCharacter;
 
   static const _radius = 18.0;
 
@@ -146,19 +153,24 @@ class PassageCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 16),
                       _Body(passage: passage, quote: gold, text: c.text),
-                      // How much it holds.
+                      // Whose words, bottom right.
                       Container(
                         width: double.infinity,
                         margin: const EdgeInsets.only(top: 2),
-                        padding: const EdgeInsets.only(top: 12),
+                        padding: const EdgeInsets.only(top: 6),
                         decoration: BoxDecoration(
                           border: Border(top: BorderSide(color: c.border)),
                         ),
-                        child: Text(
-                          passage.paragraphCount == 1
-                              ? '1 paragraph'
-                              : '${passage.paragraphCount} paragraphs',
-                          style: TextStyle(color: c.faint, fontSize: 12),
+                        alignment: Alignment.centerRight,
+                        child: _Character(
+                          name: passage.character,
+                          onTap: onCharacter,
+                          // Near black on the light theme; on the dark one
+                          // the page's own text, so it still reads.
+                          ink: dark ? c.text : const Color(0xFF161412),
+                          gold: c.accentLight,
+                          deepGold: dark ? const Color(0xFF8A6C10) : c.accent,
+                          faint: c.faint,
                         ),
                       ),
                     ],
@@ -243,6 +255,89 @@ class _Body extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The character's name, or a faint prompt to add one.
+class _Character extends StatelessWidget {
+  const _Character({
+    required this.name,
+    required this.onTap,
+    required this.ink,
+    required this.gold,
+    required this.deepGold,
+    required this.faint,
+  });
+
+  final String? name;
+  final VoidCallback? onTap;
+  final Color ink;
+  final Color gold;
+  final Color deepGold;
+  final Color faint;
+
+  /// Ink with thin gold streaks running through it at a slant, like a
+  /// vein in marble; mirrored so the streaks repeat unevenly along a name.
+  Shader _veins(Rect r) => ui.Gradient.linear(
+    r.topLeft,
+    Offset(r.left + 70, r.bottom + 28),
+    [ink, ink, deepGold, gold, ink, ink, deepGold, ink, ink, gold, ink],
+    [0, 0.28, 0.33, 0.36, 0.41, 0.6, 0.63, 0.66, 0.84, 0.87, 0.9],
+    TileMode.mirror,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final name = this.name;
+    if (name == null && onTap == null) return const SizedBox(height: 28);
+    final label = name == null
+        ? Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.person_add_alt_outlined, size: 17, color: faint),
+              const SizedBox(width: 6),
+              Text(
+                'Add character',
+                style: TextStyle(color: faint, fontSize: 14),
+              ),
+            ],
+          )
+        : ShaderMask(
+            shaderCallback: _veins,
+            blendMode: BlendMode.srcIn,
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontFamily: kSerif,
+                fontStyle: FontStyle.italic,
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          );
+    return Semantics(
+      button: onTap != null,
+      label: name == null ? 'Add character' : 'Character: $name',
+      excludeSemantics: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 32),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Align(
+              alignment: Alignment.centerRight,
+              widthFactor: 1,
+              child: label,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

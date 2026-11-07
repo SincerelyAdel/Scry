@@ -23,7 +23,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 14;
+  static const _version = 15;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -97,6 +97,7 @@ class AppDatabase {
     await _addDownloadTables(db);
     await _addSiteUrls(db);
     await _addPassages(db);
+    await _addCharacters(db);
   }
 
   /// Added in version 7: the chapter count when the novel was last read,
@@ -204,6 +205,7 @@ class AppDatabase {
     if (from < 12) await _addDownloadTables(db);
     if (from < 13) await _addSiteUrls(db);
     if (from < 14) await _addPassages(db);
+    if (from < 15) await _addCharacters(db);
   }
 
   /// Added in version 14: passages saved while reading, newest first in
@@ -223,6 +225,12 @@ class AppDatabase {
         savedAt INTEGER NOT NULL
       )
     ''');
+  }
+
+  /// Added in version 15: the character a passage belongs to, typed by
+  /// the reader.
+  static Future<void> _addCharacters(DatabaseExecutor db) async {
+    await db.execute('ALTER TABLE passages ADD COLUMN character TEXT');
   }
 
   /// Added in version 13: chapters from an EPUB added to a ranobes.net
@@ -997,6 +1005,15 @@ class AppDatabase {
 
   Future<int> insertPassage(Passage passage) =>
       _db.insert('passages', passage.toMap());
+
+  Future<void> setPassageCharacter(int id, String? character) async {
+    await _db.update(
+      'passages',
+      {'character': character},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 
   Future<void> deletePassage(int id) async {
     await _db.delete('passages', where: 'id = ?', whereArgs: [id]);

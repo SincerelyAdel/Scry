@@ -455,8 +455,16 @@ void main() {
     await tester.fling(find.text('Shadow Slave'), const Offset(300, 0), 1200);
     await tester.pumpAndSettle();
     expect(find.textContaining('Saved passages'), findsOneWidget);
-    expect(find.text('2 paragraphs'), findsOneWidget);
+    expect(find.text('2 paragraphs'), findsNothing);
     expect(find.text('CHAPTER 2'), findsOneWidget);
+    // The reader names the character, bottom right of the card.
+    await tester.tap(find.text('Add character'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Sunny');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('Sunny'), findsOneWidget);
+    expect(find.text('Add character'), findsNothing);
     // A swipe left closes them.
     await tester.fling(find.text('CHAPTER 2'), const Offset(-300, 0), 1200);
     await tester.pumpAndSettle();

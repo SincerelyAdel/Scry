@@ -207,6 +207,8 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
       ..hideCurrentSnackBar()
       ..showSnackBar(
         SnackBar(
+          // Leaves on its own, as one without a button would.
+          persist: false,
           content: Text(
             passage.paragraphCount == 1
                 ? 'Passage saved'

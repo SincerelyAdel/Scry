@@ -70,6 +70,17 @@ class _PassagesDrawerState extends State<PassagesDrawer>
     );
   }
 
+  /// Asks for the name of the character [p] belongs to.
+  Future<void> _nameCharacter(Passage p) async {
+    final novels = context.read<NovelsProvider>();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (context) => _CharacterDialog(initial: p.character ?? ''),
+    );
+    if (name == null || name.trim() == (p.character ?? '')) return;
+    await novels.setCharacter(p, name);
+  }
+
   Future<void> _manage(Passage p) async {
     final novels = context.read<NovelsProvider>();
     final messenger = ScaffoldMessenger.of(context);
@@ -86,6 +97,13 @@ class _PassagesDrawerState extends State<PassagesDrawer>
               onTap: () => Navigator.pop(context, 'copy'),
             ),
             ListTile(
+              leading: const Icon(Icons.person_outline),
+              title: Text(
+                p.character == null ? 'Add character' : 'Edit character',
+              ),
+              onTap: () => Navigator.pop(context, 'character'),
+            ),
+            ListTile(
               leading: const Icon(Icons.delete_outline),
               title: const Text('Remove from saved'),
               onTap: () => Navigator.pop(context, 'remove'),
@@ -94,7 +112,9 @@ class _PassagesDrawerState extends State<PassagesDrawer>
         ),
       ),
     );
-    if (choice == 'copy') {
+    if (choice == 'character') {
+      await _nameCharacter(p);
+    } else if (choice == 'copy') {
       await Clipboard.setData(ClipboardData(text: p.text));
       messenger.showSnackBar(const SnackBar(content: Text('Passage copied')));
     } else if (choice == 'remove') {
@@ -103,6 +123,8 @@ class _PassagesDrawerState extends State<PassagesDrawer>
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
+            // Leaves on its own, as one without a button would.
+            persist: false,
             content: const Text('Passage removed'),
             action: SnackBarAction(
               label: 'Undo',
@@ -153,6 +175,7 @@ class _PassagesDrawerState extends State<PassagesDrawer>
                       onClose: _close,
                       onOpen: _openPassage,
                       onManage: _manage,
+                      onCharacter: _nameCharacter,
                     ),
                   ),
               ],
@@ -170,11 +193,13 @@ class _Panel extends StatelessWidget {
     required this.onClose,
     required this.onOpen,
     required this.onManage,
+    required this.onCharacter,
   });
 
   final VoidCallback onClose;
   final ValueChanged<Passage> onOpen;
   final ValueChanged<Passage> onManage;
+  final ValueChanged<Passage> onCharacter;
 
   @override
   Widget build(BuildContext context) {
@@ -275,12 +300,63 @@ class _Panel extends StatelessWidget {
                         passage: passages[i],
                         onTap: () => onOpen(passages[i]),
                         onLongPress: () => onManage(passages[i]),
+                        onCharacter: () => onCharacter(passages[i]),
                       ),
                     ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// A field for the character's name; empty clears it.
+class _CharacterDialog extends StatefulWidget {
+  const _CharacterDialog({required this.initial});
+
+  final String initial;
+
+  @override
+  State<_CharacterDialog> createState() => _CharacterDialogState();
+}
+
+class _CharacterDialogState extends State<_CharacterDialog> {
+  late final _field = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _field.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Character'),
+      content: TextField(
+        controller: _field,
+        autofocus: true,
+        maxLength: 60,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(hintText: 'Who is this about?'),
+        onSubmitted: (v) => Navigator.pop(context, v),
+      ),
+      actions: [
+        if (widget.initial.isNotEmpty)
+          TextButton(
+            onPressed: () => Navigator.pop(context, ''),
+            child: const Text('Clear'),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _field.text),
+          child: const Text('Save'),
+        ),
+      ],
     );
   }
 }

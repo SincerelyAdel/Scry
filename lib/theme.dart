@@ -231,11 +231,16 @@ ThemeData buildAppTheme(AppPalette c) {
       shape: rounded(12),
     ),
     snackBarTheme: SnackBarThemeData(
-      backgroundColor: c.isDark ? c.surface : c.text,
-      contentTextStyle: TextStyle(color: c.isDark ? c.text : c.bg),
-      actionTextColor: c.accentLight,
+      // A light card on the light theme, a raised dark one on the dark.
+      backgroundColor: c.surface,
+      contentTextStyle: TextStyle(color: c.text, fontSize: 14),
+      actionTextColor: c.isDark ? c.accentLight : c.accent,
       behavior: SnackBarBehavior.floating,
-      shape: rounded(12),
+      elevation: c.isDark ? 6 : 3,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: c.border),
+      ),
     ),
     textSelectionTheme: TextSelectionThemeData(
       cursorColor: c.accent,

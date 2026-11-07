@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:scry/data/app_database.dart';
 import 'package:scry/data/novel_repository.dart';
 import 'package:scry/models/novel.dart';
+import 'package:scry/models/passage.dart';
 import 'package:scry/state/novels_provider.dart';
 import 'package:scry/services/ranobes.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -355,6 +356,33 @@ void main() {
       expect(novels.single.title, 'Shadow Slave');
       expect(novels.single.newChapters, 0);
       await file.close();
+    });
+
+    test('a passage keeps the character typed for it', () async {
+      final novel = await repo.addNovel(novelUrl);
+      final passage = await repo.savePassage(
+        Passage(
+          novelId: novel.id!,
+          novelTitle: novel.title,
+          chapterUrl: chapter2Url,
+          chapterNumber: 2,
+          chapterTitle: 'Chapter 2',
+          from: 0,
+          to: 0,
+          text: 'Chapter 2 begins here.',
+          savedAt: DateTime(2026, 11, 7),
+        ),
+      );
+      expect(passage.character, isNull);
+      await repo.setPassageCharacter(passage.id!, 'Sunny');
+      expect((await repo.listPassages()).single.character, 'Sunny');
+      await repo.setPassageCharacter(passage.id!, null);
+      expect((await repo.listPassages()).single.character, isNull);
+      expect(passage.copyWith(character: 'Nephis').character, 'Nephis');
+      expect(
+        passage.copyWith(character: 'Nephis').copyWith(character: '').character,
+        isNull,
+      );
     });
 
     test('removing a novel removes its saved chapters', () async {

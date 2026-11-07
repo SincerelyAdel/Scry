@@ -200,6 +200,8 @@ class _SwipeableArticle extends StatelessWidget {
           ..hideCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
+              // Leaves on its own, as one without a button would.
+              persist: false,
               content: const Text('Article deleted'),
               action: SnackBarAction(
                 label: 'Undo',
