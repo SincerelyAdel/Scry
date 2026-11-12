@@ -268,6 +268,82 @@ class NovelRepository {
     return updated;
   }
 
+  /// Starts the next reading of [novel], from chapter 1.
+  Future<Novel> readAgain(Novel novel) async {
+    final updated = novel.nextReading(DateTime.now());
+    await _db.updateNovel(updated);
+    return updated;
+  }
+
+  /// Makes two imported copies of one book into one, with every reading of
+  /// both: the copy read longer ago comes first, its readings and then the
+  /// other's. The older entry stays (its cover, its place in the list);
+  /// the other's passages move over and it's removed. Returns the book.
+  Future<Novel> mergeCopies(Novel a, Novel b) async {
+    // Ties go to the one added first.
+    bool before(DateTime x, DateTime y, Novel n, Novel m) =>
+        x.isBefore(y) || (x == y && n.id! < m.id!);
+    final keep = before(a.addedDate, b.addedDate, a, b) ? a : b;
+    final other = identical(keep, a) ? b : a;
+    DateTime when(Novel n) => n.readAt ?? n.addedDate;
+    final first = before(when(a), when(b), a, b) ? a : b;
+    final last = identical(first, a) ? b : a;
+    String url(int n) => 'epub://${-keep.bookId}/$n';
+
+    final moved = <Passage>[
+      for (final p in await _db.listPassages())
+        if (p.novelId == other.id)
+          p.movedTo(
+            novelId: keep.id!,
+            novelTitle: keep.title,
+            chapterUrl: p.chapterNumber > 0
+                ? url(p.chapterNumber)
+                : p.chapterUrl,
+            reading: identical(other, first)
+                ? p.reading
+                : first.reading + p.reading,
+          )
+        else if (p.novelId == keep.id && identical(keep, last))
+          p.movedTo(
+            novelId: keep.id!,
+            novelTitle: keep.title,
+            chapterUrl: p.chapterUrl,
+            reading: first.reading + p.reading,
+          ),
+    ];
+    await _db.movePassages(moved);
+
+    final number = last.chapterNumber.clamp(0, keep.chapterCount);
+    final merged = Novel(
+      id: keep.id,
+      url: keep.url,
+      bookId: keep.bookId,
+      title: keep.title,
+      cover: keep.cover,
+      author: keep.author,
+      status: keep.status,
+      description: keep.description,
+      chapterCount: keep.chapterCount,
+      addedDate: keep.addedDate,
+      lastChecked: keep.lastChecked,
+      chapterUrl: last.chapterUrl == null || number == 0 ? null : url(number),
+      chapterTitle: number == 0 ? null : last.chapterTitle,
+      chapterNumber: number,
+      chapterProgress: number == 0 ? 0 : last.chapterProgress,
+      readAt: last.readAt ?? first.readAt,
+      seenCount: keep.seenCount,
+      notifiedCount: keep.notifiedCount,
+      source: keep.source,
+      reading: first.reading + last.reading,
+      lastEnd: last.reading > 1
+          ? last.lastEnd
+          : (first.chapterNumber > 0 ? first.chapterNumber : first.lastEnd),
+    );
+    await _db.updateNovel(merged);
+    await removeNovel(other);
+    return merged;
+  }
+
   /// Clears what's left of in-app downloads (see AppDatabase).
   Future<List<int>> clearDownloads() => _db.clearDownloads();
 

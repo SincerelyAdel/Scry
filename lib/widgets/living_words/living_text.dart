@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../../theme.dart';
+import '../colour_words.dart';
+import '../veins.dart';
 import 'lexicon.dart';
 import 'living_controller.dart';
 import 'word_painter.dart';
@@ -68,7 +70,7 @@ class LivingParagraph extends StatefulWidget {
   State<LivingParagraph> createState() => _LivingParagraphState();
 }
 
-class _LivingParagraphState extends State<LivingParagraph> {
+class _LivingParagraphState extends State<LivingParagraph> with VeinDrifting {
   static final _word = RegExp(r"[A-Za-z][A-Za-z']*");
 
   final _text = GlobalKey();
@@ -77,6 +79,15 @@ class _LivingParagraphState extends State<LivingParagraph> {
   List<_Caught> _caught = const [];
   LivingEffect? _effect;
   final _glyphs = <int, WordGlyphs>{};
+
+  late bool _drifts = _hasColour();
+
+  @override
+  bool get drifts => _drifts;
+
+  bool _hasColour() => widget.runs.any(
+    (r) => r.effect == null && ColourWords.instance.any(r.text),
+  );
 
   @override
   void initState() {
@@ -100,6 +111,8 @@ class _LivingParagraphState extends State<LivingParagraph> {
     super.didUpdateWidget(old);
     if (old.runs != widget.runs || old.style != widget.style) {
       _tokens = _tokenize();
+      _drifts = _hasColour();
+      driftsChanged();
       _release();
       if (_controller?.active.value != null) _catchLater();
     }
@@ -221,6 +234,11 @@ class _LivingParagraphState extends State<LivingParagraph> {
   Widget build(BuildContext context) {
     final caught = {for (final c in _caught) c.token.start};
     final hidden = const TextStyle(color: Colors.transparent);
+    final ink = Veins.ink(context);
+    final size = widget.style.fontSize ?? 16;
+    // Plain text, with colour words veined; they're not living words.
+    List<InlineSpan> plain(String text) =>
+        ColourWords.instance.spans(text, ink: ink, size: size, shift: drift);
     final spans = <InlineSpan>[];
     var tokenAt = 0;
     var at = 0;
@@ -243,7 +261,7 @@ class _LivingParagraphState extends State<LivingParagraph> {
         continue;
       }
       if (caught.isEmpty) {
-        spans.add(TextSpan(text: run.text));
+        spans.addAll(plain(run.text));
       } else {
         // The caught words go clear; they're drawn again over the top.
         var from = 0;
@@ -252,13 +270,13 @@ class _LivingParagraphState extends State<LivingParagraph> {
           if (!caught.contains(token.start)) continue;
           final start = token.start - at;
           if (start > from) {
-            spans.add(TextSpan(text: run.text.substring(from, start)));
+            spans.addAll(plain(run.text.substring(from, start)));
           }
           spans.add(TextSpan(text: token.text, style: hidden));
           from = token.end - at;
         }
         if (from < run.text.length) {
-          spans.add(TextSpan(text: run.text.substring(from)));
+          spans.addAll(plain(run.text.substring(from)));
         }
       }
       // Tokens of this run not reached above (when nothing was caught).
@@ -268,10 +286,14 @@ class _LivingParagraphState extends State<LivingParagraph> {
       at += run.text.length;
     }
 
-    final text = Text.rich(
-      TextSpan(children: spans),
-      key: _text,
-      style: widget.style,
+    // Drawn on its own, so colour words' streaks keep to the paragraph as
+    // it scrolls.
+    final text = RepaintBoundary(
+      child: Text.rich(
+        TextSpan(children: spans),
+        key: _text,
+        style: widget.style,
+      ),
     );
     final controller = _controller;
     final effect = _effect;

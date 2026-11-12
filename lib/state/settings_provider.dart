@@ -74,6 +74,7 @@ class SettingsProvider extends ChangeNotifier {
       _novelCats = _prefs.getBool(_kNovelCats) ?? false,
       _livingWords = _prefs.getBool(_kLivingWords) ?? false,
       _livingMood = _prefs.getBool(_kLivingMood) ?? true,
+      _echoes = _prefs.getBool(_kEchoes) ?? true,
       _livingSpeed = _enumOr(
         LivingSpeed.values,
         _prefs.getString(_kLivingSpeed),
@@ -95,6 +96,7 @@ class SettingsProvider extends ChangeNotifier {
   static const _kLivingWords = 'livingWords';
   static const _kLivingMood = 'livingMood';
   static const _kLivingSpeed = 'livingSpeed';
+  static const _kEchoes = 'readingEchoes';
 
   static const minNovelFontSize = 14.0;
   static const maxNovelFontSize = 32.0;
@@ -116,6 +118,18 @@ class SettingsProvider extends ChangeNotifier {
   bool _livingWords;
   bool _livingMood;
   LivingSpeed _livingSpeed;
+  bool _echoes;
+
+  /// On a re-read, passages saved on earlier readings are marked in the
+  /// margin.
+  bool get echoes => _echoes;
+
+  Future<void> setEchoes(bool on) async {
+    if (on == _echoes) return;
+    _echoes = on;
+    notifyListeners();
+    await _prefs.setBool(_kEchoes, on);
+  }
 
   /// Words like "fire" and "venom" come alive in a chapter's text.
   bool get livingWords => _livingWords;

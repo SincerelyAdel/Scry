@@ -11,7 +11,10 @@ import '../../services/ranobes.dart';
 import '../../state/novels_provider.dart';
 import '../../theme.dart';
 import '../../utils/format.dart';
+import '../../widgets/page_gestures.dart';
+import '../../widgets/reading_ribbons.dart';
 import '../../widgets/ui.dart';
+import '../../widgets/veins.dart';
 import 'human_check_screen.dart';
 import 'library_screen.dart';
 import 'novel_cover.dart';
@@ -252,6 +255,77 @@ class _NovelScreenState extends State<NovelScreen> {
     await _loadIndex(novels.byId(novel.id));
   }
 
+  /// Starts the next reading from chapter 1, after asking.
+  Future<void> _newReading(Novel novel) async {
+    final next = Readings.ordinal(novel.reading + 1);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Start a $next reading?'),
+        content: Text(
+          novel.chapterNumber > 0
+              ? 'It starts again at chapter 1. Chapter '
+                    '${novel.chapterNumber}, where you are now, is marked as '
+                    'where this reading ended.'
+              : 'It starts again at chapter 1.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Start'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await readAgain(context, novel, fromNovelPage: true);
+  }
+
+  /// Makes this book and another copy of it into one, after asking.
+  Future<void> _merge(Novel novel, Novel copy) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Merge the two copies?'),
+        content: const Text(
+          'They become one book. Each copy counts as a reading, the one '
+          'read longer ago first, and their saved passages stay with the '
+          'book. The second copy is removed from the library.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Merge'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final merged = await context.read<NovelsProvider>().mergeCopies(
+      novel,
+      copy,
+    );
+    messenger.showSnackBar(
+      SnackBar(content: Text('Merged: ${Readings.label(merged.reading)}')),
+    );
+    // This page may have been the copy that went.
+    if (merged.id != novel.id) {
+      navigator.pushReplacement(
+        PinchBackRoute<void>(builder: (_) => NovelScreen(novelId: merged.id!)),
+      );
+    }
+  }
+
   Future<void> _remove(Novel novel) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -285,6 +359,7 @@ class _NovelScreenState extends State<NovelScreen> {
     final novel = novels.byId(widget.novelId);
     if (novel == null) return const Scaffold();
     final pad = pagePadding(context);
+    final copies = novels.copiesOf(novel);
 
     return Scaffold(
       appBar: AppBar(
@@ -308,9 +383,24 @@ class _NovelScreenState extends State<NovelScreen> {
                 _attach(novel);
               } else if (v == 'detach') {
                 _detach(novel);
+              } else if (v == 'again') {
+                _newReading(novel);
+              } else if (v == 'merge' && copies.isNotEmpty) {
+                _merge(novel, copies.first);
               }
             },
             itemBuilder: (_) => [
+              PopupMenuItem(
+                value: 'again',
+                child: Text(
+                  'Start ${Readings.ordinal(novel.reading + 1)} reading',
+                ),
+              ),
+              if (copies.isNotEmpty)
+                const PopupMenuItem(
+                  value: 'merge',
+                  child: Text('Merge with the other copy'),
+                ),
               if (!novel.isImported && BookPicker.supported)
                 PopupMenuItem(
                   value: 'attach',
@@ -447,16 +537,29 @@ class _HeaderState extends State<_Header> {
     final info = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
+        VeinText(
           novel.title,
           style: TextStyle(
             fontFamily: kSerif,
-            color: c.text,
-            fontSize: wide ? 28 : 22,
+            fontSize: wide ? 29 : 23,
             height: 1.2,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
           ),
         ),
+        if (novel.reading > 1 || novel.finished) ...[
+          const SizedBox(height: 4),
+          Text(
+            novel.finished
+                ? 'Finished ${Readings.ordinal(novel.reading)} reading'
+                : Readings.label(novel.reading),
+            style: TextStyle(
+              fontFamily: kSerif,
+              fontStyle: FontStyle.italic,
+              color: c.accent,
+              fontSize: 16,
+            ),
+          ),
+        ],
         const SizedBox(height: 6),
         Text(
           [
@@ -472,12 +575,20 @@ class _HeaderState extends State<_Header> {
           runSpacing: 10,
           children: [
             FilledButton.icon(
-              onPressed: () => openReader(context, novel, fromNovelPage: true),
+              onPressed: novel.finished
+                  ? () => readAgain(context, novel, fromNovelPage: true)
+                  : () => openReader(context, novel, fromNovelPage: true),
               icon: Icon(
-                novel.started ? Icons.play_arrow_rounded : Icons.menu_book,
+                novel.finished
+                    ? Icons.replay_rounded
+                    : novel.started
+                    ? Icons.play_arrow_rounded
+                    : Icons.menu_book,
               ),
               label: Text(
-                novel.started && novel.chapterNumber > 0
+                novel.finished
+                    ? 'Read again'
+                    : novel.started && novel.chapterNumber > 0
                     ? 'Continue chapter ${novel.chapterNumber}'
                     : novel.started
                     ? 'Continue'
@@ -505,10 +616,15 @@ class _HeaderState extends State<_Header> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              NovelCover(
-                url: novel.cover,
-                title: novel.title,
+              RibbonedCover(
                 width: wide ? 150 : 104,
+                ribbons: novel.ribbons,
+                tail: 16,
+                cover: NovelCover(
+                  url: novel.cover,
+                  title: novel.title,
+                  width: wide ? 150 : 104,
+                ),
               ),
               const SizedBox(width: 20),
               Expanded(child: info),

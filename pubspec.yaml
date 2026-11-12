@@ -9,11 +9,13 @@ environment:
 dependencies:
   archive: ^4.0.7
   cached_network_image: ^4.0.5
+  crypto: ^3.0.8
   dio: ^5.11.1
   flutter:
     sdk: flutter
   flutter_cache_manager: ^3.4.1
   flutter_local_notifications: ^22.3.2
+  google_sign_in: ^7.2.0
   html: ^0.15.7
   intl: ^0.20.3
   path: ^1.9.1

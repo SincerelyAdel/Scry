@@ -13,6 +13,7 @@ class Passage {
     required this.text,
     required this.savedAt,
     this.character,
+    this.reading = 1,
   });
 
   final int? id;
@@ -35,6 +36,9 @@ class Passage {
   /// Who speaks or is meant, typed by the reader; null when not given.
   final String? character;
 
+  /// Which reading of the book it was saved on, from 1.
+  final int reading;
+
   int get paragraphCount => to - from + 1;
 
   List<String> get paragraphs => text.split('\n\n');
@@ -51,6 +55,7 @@ class Passage {
     'body': text,
     'savedAt': savedAt.millisecondsSinceEpoch,
     'character': character,
+    'reading': reading,
   };
 
   static Passage fromMap(Map<String, Object?> row) => Passage(
@@ -65,6 +70,7 @@ class Passage {
     text: row['body'] as String,
     savedAt: DateTime.fromMillisecondsSinceEpoch(row['savedAt'] as int),
     character: row['character'] as String?,
+    reading: (row['reading'] as int?) ?? 1,
   );
 
   /// A copy; [character] '' clears the name.
@@ -82,5 +88,28 @@ class Passage {
     character: character == null
         ? this.character
         : (character.isEmpty ? null : character),
+    reading: reading,
+  );
+
+  /// The same passage in another copy of the book: [novelId], its title
+  /// and chapter link, and [reading] there.
+  Passage movedTo({
+    required int novelId,
+    required String novelTitle,
+    required String chapterUrl,
+    required int reading,
+  }) => Passage(
+    id: id,
+    novelId: novelId,
+    novelTitle: novelTitle,
+    chapterUrl: chapterUrl,
+    chapterNumber: chapterNumber,
+    chapterTitle: chapterTitle,
+    from: from,
+    to: to,
+    text: text,
+    savedAt: savedAt,
+    character: character,
+    reading: reading,
   );
 }

@@ -23,7 +23,7 @@ class AppDatabase {
   final Database _db;
 
   static const _fileName = 'scry.db';
-  static const _version = 15;
+  static const _version = 16;
 
   /// Opens (and creates or migrates) the database.
   ///
@@ -98,6 +98,7 @@ class AppDatabase {
     await _addSiteUrls(db);
     await _addPassages(db);
     await _addCharacters(db);
+    await _addReadings(db);
   }
 
   /// Added in version 7: the chapter count when the novel was last read,
@@ -206,6 +207,7 @@ class AppDatabase {
     if (from < 13) await _addSiteUrls(db);
     if (from < 14) await _addPassages(db);
     if (from < 15) await _addCharacters(db);
+    if (from < 16) await _addReadings(db);
   }
 
   /// Added in version 14: passages saved while reading, newest first in
@@ -231,6 +233,21 @@ class AppDatabase {
   /// the reader.
   static Future<void> _addCharacters(DatabaseExecutor db) async {
     await db.execute('ALTER TABLE passages ADD COLUMN character TEXT');
+  }
+
+  /// Added in version 16: re-reading a book on the same entry. Which
+  /// reading the novel is on and where the one before ended, and which
+  /// reading each passage was saved on.
+  static Future<void> _addReadings(DatabaseExecutor db) async {
+    await db.execute(
+      'ALTER TABLE novels ADD COLUMN reading INTEGER NOT NULL DEFAULT 1',
+    );
+    await db.execute(
+      'ALTER TABLE novels ADD COLUMN lastEnd INTEGER NOT NULL DEFAULT 0',
+    );
+    await db.execute(
+      'ALTER TABLE passages ADD COLUMN reading INTEGER NOT NULL DEFAULT 1',
+    );
   }
 
   /// Added in version 13: chapters from an EPUB added to a ranobes.net
@@ -1013,6 +1030,15 @@ class AppDatabase {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Moves passages to another copy of their book, all or none.
+  Future<void> movePassages(List<Passage> passages) async {
+    final batch = _db.batch();
+    for (final p in passages) {
+      batch.update('passages', p.toMap(), where: 'id = ?', whereArgs: [p.id]);
+    }
+    await batch.commit(noResult: true);
   }
 
   Future<void> deletePassage(int id) async {

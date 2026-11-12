@@ -341,6 +341,8 @@ void main() {
       await raw.execute('ALTER TABLE novels DROP COLUMN seenCount');
       await raw.execute('ALTER TABLE novels DROP COLUMN notifiedCount');
       await raw.execute('ALTER TABLE novels DROP COLUMN source');
+      await raw.execute('ALTER TABLE novels DROP COLUMN reading');
+      await raw.execute('ALTER TABLE novels DROP COLUMN lastEnd');
       await raw.execute('ALTER TABLE chapters DROP COLUMN keep');
       await raw.execute('DROP TABLE chapter_index');
       await raw.execute('DROP TABLE downloads');

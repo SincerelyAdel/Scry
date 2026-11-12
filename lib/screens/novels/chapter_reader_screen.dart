@@ -15,13 +15,16 @@ import '../../state/settings_provider.dart';
 import '../../theme.dart';
 import '../../widgets/cats/cat_layer.dart';
 import '../../widgets/cats/cat_menu.dart';
+import '../../widgets/colour_words.dart';
 import '../../widgets/living_words/lexicon.dart';
 import '../../widgets/living_words/living_controller.dart';
 import '../../widgets/living_words/living_menu.dart';
 import '../../widgets/living_words/living_text.dart';
 import '../../widgets/living_words/mood_layer.dart';
 import '../../widgets/page_gestures.dart';
+import '../../widgets/reading_ribbons.dart';
 import '../../widgets/ui.dart';
+import '../../widgets/veins.dart';
 import 'human_check_screen.dart';
 import 'passage_selection.dart';
 
@@ -201,6 +204,7 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
         to: to,
         text: _textOf(from, to),
         savedAt: DateTime.now(),
+        reading: _novel.reading,
       ),
     );
     messenger
@@ -248,6 +252,26 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     return _runs!;
   }
 
+  /// Passages of this chapter saved on earlier readings, by the
+  /// paragraphs they cover: the first one covering each.
+  Map<int, Passage> _echoesOf(ChapterText chapter) {
+    final echoes = <int, Passage>{};
+    final earlier = [
+      for (final p in context.watch<NovelsProvider>().passages)
+        if (p.novelId == _novel.id &&
+            p.reading < _novel.reading &&
+            (p.chapterUrl == chapter.url ||
+                (_number > 0 && p.chapterNumber == _number)))
+          p,
+    ]..sort((a, b) => a.reading.compareTo(b.reading));
+    for (final p in earlier) {
+      for (var i = p.from; i <= p.to; i++) {
+        echoes.putIfAbsent(i, () => p);
+      }
+    }
+    return echoes;
+  }
+
   /// Keeps the controller in step with the settings. Turning it off stops
   /// a playing word, which rebuilds widgets, so that waits for the frame.
   void _syncLiving(SettingsProvider settings) {
@@ -272,6 +296,10 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
     _syncLiving(settings);
     // The column below already limits the width, so a plain margin.
     const pad = 20.0;
+    final ink = Veins.ink(context);
+    final echoes = chapter != null && settings.echoes
+        ? _echoesOf(chapter)
+        : const <int, Passage>{};
 
     final textStyle = TextStyle(
       fontFamily: settings.novelFont == NovelFont.serif ? kSerif : null,
@@ -327,14 +355,13 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                         style: TextStyle(color: c.muted, fontSize: 13),
                       ),
                       const SizedBox(height: 8),
-                      Text(
+                      VeinText(
                         chapter!.title,
                         style: TextStyle(
                           fontFamily: kSerif,
-                          color: c.text,
                           fontSize: settings.novelFontSize + 6,
                           height: 1.25,
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       SizedBox(height: settings.novelFontSize * 1.4),
@@ -343,16 +370,24 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
                           padding: EdgeInsets.only(
                             bottom: settings.novelFontSize * 0.9,
                           ),
-                          child: PassageParagraph(
-                            controller: _passage,
-                            index: i,
-                            child: settings.livingWords
-                                ? LivingParagraph(
-                                    id: i,
-                                    runs: _runsOf(chapter)[i],
-                                    style: textStyle,
-                                  )
-                                : Text(paragraph, style: textStyle),
+                          child: _Echo(
+                            passage: echoes[i],
+                            last: echoes[i]?.to == i,
+                            child: PassageParagraph(
+                              controller: _passage,
+                              index: i,
+                              child: settings.livingWords
+                                  ? LivingParagraph(
+                                      id: i,
+                                      runs: _runsOf(chapter)[i],
+                                      style: textStyle,
+                                    )
+                                  : ColourParagraph(
+                                      paragraph,
+                                      ink: ink,
+                                      style: textStyle,
+                                    ),
+                            ),
                           ),
                         ),
                       const SizedBox(height: 24),
@@ -525,6 +560,84 @@ class _ChapterReaderScreenState extends State<ChapterReaderScreen> {
   }
 }
 
+/// A paragraph saved on an earlier reading: a soft line in the margin in
+/// that reading's colour, and under the passage's last paragraph, which
+/// reading and whose words.
+class _Echo extends StatelessWidget {
+  const _Echo({required this.passage, required this.last, required this.child});
+
+  final Passage? passage;
+  final bool last;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = passage;
+    if (p == null) return child;
+    final c = context.palette;
+    final colour = Readings.colour(p.reading);
+    final line = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        child,
+        Positioned(
+          left: 6,
+          top: 4,
+          bottom: 4,
+          child: IgnorePointer(
+            child: Container(
+              width: 2,
+              decoration: BoxDecoration(
+                color: colour.withValues(alpha: 0.8),
+                borderRadius: BorderRadius.circular(1),
+                boxShadow: [
+                  BoxShadow(
+                    color: colour.withValues(alpha: 0.6),
+                    blurRadius: 6,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+    if (!last) return line;
+    final who = p.character;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        line,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
+          child: Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: colour,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  'Saved on your ${Readings.ordinal(p.reading)} reading'
+                  '${who == null ? '' : '  ·  $who'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.muted, fontSize: 12),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// Previous and next chapter at the end of the text. At the latest
 /// chapter, says so and offers to look again.
 class _ChapterNav extends StatelessWidget {
@@ -653,6 +766,17 @@ class _TextSettingsSheet extends StatelessWidget {
               ],
               selected: {settings.novelFont},
               onSelectionChanged: (v) => settings.setNovelFont(v.first),
+            ),
+            const SizedBox(height: 4),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Echoes of earlier readings'),
+              subtitle: const Text(
+                'On a re-read, passages you saved before are marked in the '
+                'margin',
+              ),
+              value: settings.echoes,
+              onChanged: settings.setEchoes,
             ),
           ],
         ),

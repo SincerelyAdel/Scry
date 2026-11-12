@@ -7,7 +7,9 @@ import '../../services/chapter_alerts.dart';
 import '../../state/novels_provider.dart';
 import '../../theme.dart';
 import '../../widgets/page_gestures.dart';
+import '../../widgets/reading_ribbons.dart';
 import '../../widgets/ui.dart';
+import '../../widgets/veins.dart';
 import 'add_novel_screen.dart';
 import 'chapter_reader_screen.dart';
 import 'human_check_screen.dart';
@@ -66,7 +68,24 @@ class _LibraryScreenState extends State<LibraryScreen> {
       final bytes = await BookPicker.pick();
       if (bytes == null) return;
       setState(() => _importing = true);
-      final novel = await novels.importBook(bytes);
+      final book = await novels.readBook(bytes);
+      // A book already here: offer to read it again instead.
+      final copy = novels.copyOf(book);
+      if (copy != null) {
+        if (!mounted) return;
+        setState(() => _importing = false);
+        final choice = await showDialog<String>(
+          context: context,
+          builder: (_) => ReadAgainDialog(novel: copy),
+        );
+        if (choice == null || !mounted) return;
+        if (choice == 'again') {
+          await readAgain(context, copy);
+          return;
+        }
+        setState(() => _importing = true);
+      }
+      final novel = await novels.addBook(book);
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(
@@ -134,7 +153,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
           padding: EdgeInsets.fromLTRB(pad, 12, pad, 96),
           gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
             maxCrossAxisExtent: 640,
-            mainAxisExtent: 212,
+            // Room under the cover for the ribbons' tails.
+            mainAxisExtent: 226,
             crossAxisSpacing: 14,
             mainAxisSpacing: 14,
           ),
@@ -217,6 +237,11 @@ class NovelCard extends StatelessWidget {
         : left == 0
         ? 'All ${novel.chapterCount} read'
         : '${novel.chapterNumber} of ${novel.chapterCount}  ·  $left to go';
+    final reading = novel.finished
+        ? 'Finished ${Readings.ordinal(novel.reading)} reading'
+        : novel.reading > 1
+        ? Readings.label(novel.reading)
+        : null;
 
     return AppCard(
       padding: const EdgeInsets.all(14),
@@ -227,22 +252,25 @@ class NovelCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          NovelCover(url: novel.cover, title: novel.title, width: 122),
+          RibbonedCover(
+            width: 122,
+            ribbons: novel.ribbons,
+            cover: NovelCover(url: novel.cover, title: novel.title, width: 122),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                VeinText(
                   novel.title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontFamily: kSerif,
-                    color: c.text,
-                    fontSize: 18,
-                    height: 1.25,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 19,
+                    height: 1.2,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 if (novel.author != null) ...[
@@ -252,6 +280,19 @@ class NovelCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(color: c.muted, fontSize: 13),
+                  ),
+                ],
+                if (reading != null) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    reading,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontFamily: kSerif,
+                      fontStyle: FontStyle.italic,
+                      color: c.accent,
+                      fontSize: 15,
+                    ),
                   ),
                 ],
                 if (fresh > 0) ...[
@@ -294,26 +335,31 @@ class NovelCard extends StatelessWidget {
                 ),
                 if (novel.started && novel.chapterNumber > 0) ...[
                   const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: LinearProgressIndicator(
-                      value: novel.progress,
-                      minHeight: 3,
-                      backgroundColor: c.surfaceAlt,
-                    ),
-                  ),
+                  ReadingBar(novel: novel),
                 ],
                 const SizedBox(height: 10),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
                     visualDensity: VisualDensity.compact,
                   ),
-                  onPressed: () => openReader(context, novel),
+                  onPressed: novel.finished
+                      ? () => readAgain(context, novel)
+                      : () => openReader(context, novel),
                   icon: Icon(
-                    novel.started ? Icons.play_arrow_rounded : Icons.menu_book,
+                    novel.finished
+                        ? Icons.replay_rounded
+                        : novel.started
+                        ? Icons.play_arrow_rounded
+                        : Icons.menu_book,
                     size: 18,
                   ),
-                  label: Text(novel.started ? 'Continue' : 'Start reading'),
+                  label: Text(
+                    novel.finished
+                        ? 'Read again'
+                        : novel.started
+                        ? 'Continue'
+                        : 'Start reading',
+                  ),
                 ),
               ],
             ),
@@ -356,6 +402,152 @@ Future<void> openReader(
       ),
     ),
   );
+}
+
+/// Starts the next reading of [novel] and opens it at chapter 1.
+Future<void> readAgain(
+  BuildContext context,
+  Novel novel, {
+  bool fromNovelPage = false,
+}) async {
+  final again = await context.read<NovelsProvider>().readAgain(novel);
+  if (!context.mounted) return;
+  await openReader(context, again, fromNovelPage: fromNovelPage);
+}
+
+/// How far through the book, with a tick where the previous reading ended.
+class ReadingBar extends StatelessWidget {
+  const ReadingBar({super.key, required this.novel});
+
+  final Novel novel;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final last = novel.lastEndShare;
+    return SizedBox(
+      height: 11,
+      child: LayoutBuilder(
+        builder: (context, box) => Stack(
+          alignment: Alignment.centerLeft,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: novel.progress,
+                minHeight: 3,
+                backgroundColor: c.surfaceAlt,
+              ),
+            ),
+            if (last != null)
+              Positioned(
+                left: (box.maxWidth * last - 2).clamp(0, box.maxWidth - 2),
+                top: 0,
+                bottom: 0,
+                child: Tooltip(
+                  message: 'Where your last reading ended',
+                  child: Container(
+                    width: 2,
+                    decoration: BoxDecoration(
+                      color: c.faint,
+                      borderRadius: BorderRadius.circular(1),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Asks what to do with an EPUB of a book that's already in the library:
+/// pops 'again' to read it again, 'separate' to add it anyway.
+class ReadAgainDialog extends StatelessWidget {
+  const ReadAgainDialog({super.key, required this.novel});
+
+  final Novel novel;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.palette;
+    final next = Readings.ordinal(novel.reading + 1);
+    final times = novel.ribbons;
+    return AlertDialog(
+      title: const Text('You already have this book'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+            decoration: BoxDecoration(
+              color: c.surfaceAlt,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                RibbonedCover(
+                  width: 44,
+                  ribbons: times,
+                  tail: 8,
+                  cover: NovelCover(
+                    url: novel.cover,
+                    title: novel.title,
+                    width: 44,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      VeinText(
+                        novel.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontFamily: kSerif,
+                          fontSize: 18,
+                          height: 1.2,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(switch (times) {
+                        0 => 'Not finished yet',
+                        1 => 'Read once',
+                        2 => 'Read twice',
+                        _ => 'Read $times times',
+                      }, style: TextStyle(color: c.muted, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            'Start a $next reading from chapter 1? Your saved passages and '
+            'ribbons stay with the book.',
+            style: TextStyle(color: c.text, fontSize: 14.5, height: 1.4),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, 'separate'),
+          child: const Text('Add as separate book'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, 'again'),
+          child: Text('Start $next reading'),
+        ),
+      ],
+    );
+  }
 }
 
 /// Shown when ranobes.net put up its human check during a chapter check.

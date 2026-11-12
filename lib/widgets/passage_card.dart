@@ -1,14 +1,15 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
 import '../models/passage.dart';
 import '../theme.dart';
+import 'reading_ribbons.dart';
+import 'veins.dart';
 
 /// A saved passage: the novel, the chapter's number and title, and the
 /// passage itself under a large faint opening quote. A long passage scrolls
-/// inside the card. A gold ribbon hangs from the top edge, as in a book,
-/// and the character it belongs to, typed by the reader, sits bottom right.
+/// inside the card. A ribbon in its reading's colour hangs from the top
+/// edge, as in a book, and the character it belongs to, typed by the
+/// reader, sits bottom right. The novel and the character are veined.
 class PassageCard extends StatelessWidget {
   const PassageCard({
     super.key,
@@ -96,15 +97,14 @@ class PassageCard extends StatelessWidget {
                               color: c.accentLight,
                             ),
                             const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
+                            Flexible(
+                              child: VeinText(
                                 passage.novelTitle,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: c.text,
+                                style: const TextStyle(
                                   fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   height: 1.3,
                                 ),
                               ),
@@ -165,11 +165,6 @@ class PassageCard extends StatelessWidget {
                         child: _Character(
                           name: passage.character,
                           onTap: onCharacter,
-                          // Near black on the light theme; on the dark one
-                          // the page's own text, so it still reads.
-                          ink: dark ? c.text : const Color(0xFF161412),
-                          gold: c.accentLight,
-                          deepGold: dark ? const Color(0xFF8A6C10) : c.accent,
                           faint: c.faint,
                         ),
                       ),
@@ -179,9 +174,10 @@ class PassageCard extends StatelessWidget {
                 Positioned(
                   top: 0,
                   right: 22,
-                  child: _Ribbon(
-                    light: c.accentLight,
-                    deep: dark ? const Color(0xFF8A6C10) : c.accent,
+                  child: Ribbon(
+                    colour: Readings.colour(passage.reading),
+                    width: 14,
+                    height: 30,
                   ),
                 ),
               ],
@@ -259,33 +255,18 @@ class _Body extends StatelessWidget {
   }
 }
 
-/// The character's name, or a faint prompt to add one.
+/// The character's name in veins of several colours, or a faint prompt to
+/// add one.
 class _Character extends StatelessWidget {
   const _Character({
     required this.name,
     required this.onTap,
-    required this.ink,
-    required this.gold,
-    required this.deepGold,
     required this.faint,
   });
 
   final String? name;
   final VoidCallback? onTap;
-  final Color ink;
-  final Color gold;
-  final Color deepGold;
   final Color faint;
-
-  /// Ink with thin gold streaks running through it at a slant, like a
-  /// vein in marble; mirrored so the streaks repeat unevenly along a name.
-  Shader _veins(Rect r) => ui.Gradient.linear(
-    r.topLeft,
-    Offset(r.left + 70, r.bottom + 28),
-    [ink, ink, deepGold, gold, ink, ink, deepGold, ink, ink, gold, ink],
-    [0, 0.28, 0.33, 0.36, 0.41, 0.6, 0.63, 0.66, 0.84, 0.87, 0.9],
-    TileMode.mirror,
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -303,20 +284,15 @@ class _Character extends StatelessWidget {
               ),
             ],
           )
-        : ShaderMask(
-            shaderCallback: _veins,
-            blendMode: BlendMode.srcIn,
-            child: Text(
-              name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontFamily: kSerif,
-                fontStyle: FontStyle.italic,
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-              ),
+        : VeinText(
+            name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontFamily: kSerif,
+              fontStyle: FontStyle.italic,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
             ),
           );
     return Semantics(
@@ -340,42 +316,4 @@ class _Character extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A bookmark ribbon with a notched end.
-class _Ribbon extends StatelessWidget {
-  const _Ribbon({required this.light, required this.deep});
-
-  final Color light;
-  final Color deep;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipPath(
-      clipper: const _Notch(),
-      child: Container(
-        width: 14,
-        height: 30,
-        decoration: BoxDecoration(
-          gradient: LinearGradient(colors: [light, deep]),
-        ),
-      ),
-    );
-  }
-}
-
-class _Notch extends CustomClipper<Path> {
-  const _Notch();
-
-  @override
-  Path getClip(Size s) => Path()
-    ..moveTo(0, 0)
-    ..lineTo(s.width, 0)
-    ..lineTo(s.width, s.height)
-    ..lineTo(s.width / 2, s.height * 0.76)
-    ..lineTo(0, s.height)
-    ..close();
-
-  @override
-  bool shouldReclip(_Notch old) => false;
 }

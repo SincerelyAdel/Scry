@@ -5,6 +5,7 @@ import '../models/article_sort.dart';
 import '../services/background_sync.dart';
 import '../services/chapter_alerts.dart';
 import '../state/settings_provider.dart';
+import '../sync/drive_sync.dart';
 import '../theme.dart';
 import '../widgets/ui.dart';
 
@@ -162,6 +163,7 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
+          const _DriveCard(),
           const SectionLabel('NOVELS'),
           AppCard(
             child: SwitchListTile(
@@ -185,6 +187,89 @@ class SettingsScreen extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Syncing the library with Google Drive, between this device and others.
+class _DriveCard extends StatelessWidget {
+  const _DriveCard();
+
+  static String _ago(DateTime when) {
+    final d = DateTime.now().difference(when);
+    if (d.inMinutes < 1) return 'just now';
+    if (d.inHours < 1) return '${d.inMinutes} min ago';
+    if (d.inDays < 1) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final drive = context.watch<DriveSync?>();
+    if (drive == null) return const SizedBox.shrink();
+    final c = context.palette;
+    final muted = TextStyle(color: c.muted, fontSize: 13, height: 1.4);
+    final String about;
+    if (!drive.available) {
+      about = 'Needs a one-time Google setup before it can be turned on.';
+    } else if (!drive.enabled) {
+      about =
+          'Keeps your novels, reading places, saved passages and feeds the '
+          'same on every device you sign in on. Stored in a hidden folder in '
+          'your Google Drive that only Scry can see.';
+    } else {
+      final last = drive.lastSync;
+      about = [
+        if (drive.email != null) drive.email!,
+        drive.syncing
+            ? 'Syncing…'
+            : (last == null ? 'Not synced yet' : 'Synced ${_ago(last)}'),
+      ].join('  ·  ');
+    }
+    final error = drive.enabled ? drive.error : null;
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: AppCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: drive.enabled,
+              onChanged: drive.available
+                  ? (on) => on ? drive.enable() : drive.disable()
+                  : null,
+              title: Text(
+                'Sync with Google Drive',
+                style: TextStyle(color: c.text, fontSize: 15),
+              ),
+              subtitle: Text(about, style: muted),
+            ),
+            if (error != null)
+              Text(error, style: muted.copyWith(color: c.accent)),
+            if (drive.enabled)
+              Align(
+                alignment: Alignment.centerRight,
+                child: drive.needsSignIn
+                    ? TextButton(
+                        onPressed: drive.enable,
+                        child: const Text('Sign in'),
+                      )
+                    : TextButton(
+                        onPressed: drive.syncing ? null : drive.sync,
+                        child: const Text('Sync now'),
+                      ),
+              ),
+            if (!drive.enabled && drive.available)
+              Text(
+                'Downloaded chapters stay on each device. Books imported '
+                'from EPUB files sync their place and passages once the '
+                'same book is imported on the other device.',
+                style: muted,
+              ),
+          ],
+        ),
       ),
     );
   }

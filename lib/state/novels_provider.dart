@@ -96,15 +96,64 @@ class NovelsProvider extends ChangeNotifier {
     await load();
   }
 
+  /// Reads the EPUB book in [bytes], without adding it.
+  Future<EpubBook> readBook(Uint8List bytes) =>
+      Isolate.run(() => Epub.parse(bytes));
+
   /// Adds the EPUB book in [bytes] to the library.
-  Future<Novel> importBook(Uint8List bytes) async {
-    final book = await Isolate.run(() => Epub.parse(bytes));
+  Future<Novel> importBook(Uint8List bytes) async =>
+      addBook(await readBook(bytes));
+
+  /// Adds [book], already read, to the library.
+  Future<Novel> addBook(EpubBook book) async {
     final dir = coverDir == null
         ? Directory.systemTemp.path
         : await coverDir!();
     final novel = await _repo.importBook(book, coverDir: dir);
     await load();
     return novel;
+  }
+
+  // -------------------------------------------------------------- readings
+
+  /// An imported book already in the library that [book] is a copy of.
+  Novel? copyOf(EpubBook book) => _novels
+      .where((n) => n.isImported && _sameBook(n, book.title, book.author))
+      .firstOrNull;
+
+  /// Other imported copies of [novel], by title and author.
+  List<Novel> copiesOf(Novel novel) => [
+    for (final n in _novels)
+      if (n.id != novel.id &&
+          n.isImported &&
+          novel.isImported &&
+          _sameBook(n, novel.title, novel.author))
+        n,
+  ];
+
+  static String _key(String s) =>
+      s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+  static bool _sameBook(Novel n, String title, String? author) {
+    if (_key(n.title) != _key(title)) return false;
+    final a = n.author, b = author;
+    return a == null || b == null || _key(a) == _key(b);
+  }
+
+  /// Starts the next reading of [novel], from chapter 1.
+  Future<Novel> readAgain(Novel novel) async {
+    final updated = await _repo.readAgain(novel);
+    _replace(updated);
+    notifyListeners();
+    return updated;
+  }
+
+  /// Makes [a] and [b], two copies of one book, into one with every
+  /// reading of both. Returns the book that's left.
+  Future<Novel> mergeCopies(Novel a, Novel b) async {
+    final merged = await _repo.mergeCopies(a, b);
+    await load();
+    return merged;
   }
 
   /// Looks for new chapters of every novel. Skipped when the last check

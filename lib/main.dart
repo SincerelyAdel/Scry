@@ -13,6 +13,8 @@ import 'services/chapter_alerts.dart';
 import 'services/feed_fetcher.dart';
 import 'services/ranobes_session.dart';
 import 'state/settings_provider.dart';
+import 'sync/drive_sync.dart';
+import 'sync/library_sync.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +29,7 @@ Future<void> main() async {
   final fetcher = DioFeedFetcher();
   final repository = FeedRepository(db, fetcher);
   final novels = NovelRepository(db, fetcher);
+  final driveSync = DriveSync(prefs, LibrarySync(db, novels));
 
   await BackgroundSync.initialize();
   unawaited(BackgroundSync.apply(settings.syncInterval));
@@ -40,6 +43,7 @@ Future<void> main() async {
       novels: novels,
       openNovelId: launch?.novelId,
       openNovelPage: launch?.page ?? false,
+      driveSync: driveSync,
     ),
   );
 }

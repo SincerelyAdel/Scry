@@ -20,6 +20,8 @@ class Novel {
     this.seenCount = 0,
     this.notifiedCount = 0,
     this.source = NovelSource.ranobes,
+    this.reading = 1,
+    this.lastEnd = 0,
   });
 
   final int? id;
@@ -68,6 +70,52 @@ class Novel {
   /// Where the novel comes from.
   final NovelSource source;
 
+  /// Which time through the book this is, from 1.
+  final int reading;
+
+  /// The chapter the previous reading got to, or 0 for none.
+  final int lastEnd;
+
+  /// The whole book has been read this time. Only books on the phone end;
+  /// a novel on the site may go on.
+  bool get finished =>
+      isImported &&
+      started &&
+      chapterCount > 0 &&
+      chapterNumber >= chapterCount &&
+      chapterProgress >= 0.95;
+
+  /// A ribbon for each reading before this one, and this one once it's
+  /// finished.
+  int get ribbons => reading - 1 + (finished ? 1 : 0);
+
+  /// Where the previous reading ended, from 0 to 1, or null for none.
+  double? get lastEndShare => reading > 1 && lastEnd > 0 && chapterCount > 0
+      ? (lastEnd / chapterCount).clamp(0.0, 1.0)
+      : null;
+
+  /// Starts the next reading: back before chapter 1, remembering where
+  /// this one got to.
+  Novel nextReading(DateTime now) => Novel(
+    id: id,
+    url: url,
+    bookId: bookId,
+    title: title,
+    cover: cover,
+    author: author,
+    status: status,
+    description: description,
+    chapterCount: chapterCount,
+    addedDate: addedDate,
+    lastChecked: lastChecked,
+    readAt: now,
+    seenCount: seenCount,
+    notifiedCount: notifiedCount,
+    source: source,
+    reading: reading + 1,
+    lastEnd: chapterNumber > 0 ? chapterNumber : lastEnd,
+  );
+
   /// Imported from a file: everything is saved, nothing to check online.
   bool get isImported => source == NovelSource.epub;
 
@@ -108,6 +156,8 @@ class Novel {
     double? chapterProgress,
     DateTime? readAt,
     int? seenCount,
+    int? reading,
+    int? lastEnd,
   }) {
     return Novel(
       id: id,
@@ -129,6 +179,8 @@ class Novel {
       seenCount: seenCount ?? this.seenCount,
       notifiedCount: notifiedCount,
       source: source,
+      reading: reading ?? this.reading,
+      lastEnd: lastEnd ?? this.lastEnd,
     );
   }
 
@@ -156,6 +208,8 @@ class Novel {
       notifiedCount: (map['notifiedCount'] as int?) ?? 0,
       source:
           NovelSource.values.asNameMap()[map['source']] ?? NovelSource.ranobes,
+      reading: (map['reading'] as int?) ?? 1,
+      lastEnd: (map['lastEnd'] as int?) ?? 0,
     );
   }
 
@@ -179,6 +233,8 @@ class Novel {
       'readAt': readAt?.millisecondsSinceEpoch,
       'seenCount': seenCount,
       'source': source.name,
+      'reading': reading,
+      'lastEnd': lastEnd,
     };
   }
 }

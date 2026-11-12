@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:provider/provider.dart';
@@ -15,6 +17,7 @@ import 'state/articles_provider.dart';
 import 'state/feeds_provider.dart';
 import 'state/novels_provider.dart';
 import 'state/settings_provider.dart';
+import 'sync/drive_sync.dart';
 import 'theme.dart';
 import 'widgets/app_header.dart';
 import 'widgets/gold_glow_border.dart';
@@ -29,6 +32,7 @@ class ScryApp extends StatefulWidget {
     this.refreshOnLaunch = true,
     this.openNovelId,
     this.openNovelPage = false,
+    this.driveSync,
   });
 
   final FeedRepository repository;
@@ -45,6 +49,9 @@ class ScryApp extends StatefulWidget {
   /// Open [openNovelId]'s page rather than the reader (from a download
   /// notification).
   final bool openNovelPage;
+
+  /// Keeps the library in step with Google Drive; none in widget tests.
+  final DriveSync? driveSync;
 
   @override
   State<ScryApp> createState() => _ScryAppState();
@@ -87,6 +94,19 @@ class _ScryAppState extends State<ScryApp> {
     _feeds.load();
     _articles.reload();
     if (widget.refreshOnLaunch) _feeds.refreshAll();
+
+    final drive = widget.driveSync;
+    if (drive != null) {
+      drive.onChanged = (outcome) async {
+        await _novels.load();
+        await _feeds.load();
+        _feeds.onLibraryChanged?.call();
+        if (outcome.newFeeds) unawaited(_feeds.refreshAll());
+      };
+      _novels.addListener(drive.changed);
+      _feeds.addListener(drive.changed);
+      drive.start();
+    }
 
     ChapterAlerts.onOpen = _openNovel;
     ChapterAlerts.onOpenPage = _openNovelPage;
@@ -142,6 +162,11 @@ class _ScryAppState extends State<ScryApp> {
   @override
   void dispose() {
     widget.settings.removeListener(_onSettingsChanged);
+    final drive = widget.driveSync;
+    if (drive != null) {
+      _novels.removeListener(drive.changed);
+      _feeds.removeListener(drive.changed);
+    }
     if (ChapterAlerts.onOpen == _openNovel) ChapterAlerts.onOpen = null;
     if (ChapterAlerts.onOpenPage == _openNovelPage) {
       ChapterAlerts.onOpenPage = null;
@@ -163,6 +188,7 @@ class _ScryAppState extends State<ScryApp> {
         ChangeNotifierProvider.value(value: _articles),
         ChangeNotifierProvider.value(value: _images),
         ChangeNotifierProvider.value(value: _novels),
+        ChangeNotifierProvider<DriveSync?>.value(value: widget.driveSync),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) => MaterialApp(
